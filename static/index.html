@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gemini harness</title>
+<style>
+  :root { --bg:#faf9f5; --panel:#f0eee6; --ink:#1f1e1d; --mute:#73726c; --line:#e0ddd2; --accent:#c6613f; --code:#2b2a28; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#262624; --panel:#1f1e1d; --ink:#ececea; --mute:#9a9890; --line:#3a3936; --accent:#d97757; --code:#171716; } }
+  * { box-sizing:border-box; }
+  body { margin:0; height:100vh; display:flex; background:var(--bg); color:var(--ink); font:15px/1.55 system-ui,sans-serif; }
+  aside { width:260px; background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; }
+  aside h1 { font-size:14px; margin:0; padding:14px 14px 8px; letter-spacing:.02em; }
+  button, select { font:inherit; color:inherit; background:transparent; border:1px solid var(--line); border-radius:8px; padding:6px 10px; cursor:pointer; }
+  button:hover { border-color:var(--mute); }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  #new { margin:0 12px 8px; }
+  #list { flex:1; overflow:auto; padding:0 6px; }
+  .s { padding:8px 10px; border-radius:8px; cursor:pointer; display:flex; justify-content:space-between; gap:6px; }
+  .s:hover, .s.on { background:var(--bg); }
+  .s span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .s small { color:var(--mute); }
+  .s .x { opacity:0; border:none; padding:0 4px; color:var(--mute); }
+  .s:hover .x { opacity:1; }
+  #projbar { display:flex; gap:6px; padding:0 12px 6px; } #projbar select { flex:1; min-width:0; }
+  #root { padding:0 14px 10px; font-size:11px; color:var(--mute); word-break:break-all; }
+  #blocks { border-top:1px solid var(--line); padding:8px 6px; max-height:34%; overflow:auto; }
+  #blocks h2 { font-size:12px; margin:0 0 4px; padding:0 6px; color:var(--mute); display:flex; justify-content:space-between; align-items:center; font-weight:600; }
+  .b { padding:4px 10px; border-radius:8px; cursor:pointer; font-size:13px; display:flex; justify-content:space-between; }
+  .b:hover { background:var(--bg); } .b small { color:var(--mute); }
+  dialog { background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:12px; width:min(680px,92vw); padding:16px; }
+  dialog::backdrop { background:rgba(0,0,0,.4); }
+  dialog input, dialog textarea { width:100%; margin-bottom:8px; background:var(--panel); color:inherit; border:1px solid var(--line); border-radius:8px; padding:8px 10px; font:inherit; }
+  dialog textarea { height:340px; font:13px/1.5 ui-monospace,monospace; max-height:none; }
+  dialog .row { display:flex; gap:8px; justify-content:flex-end; }
+  main { flex:1; display:flex; flex-direction:column; min-width:0; }
+  header { display:flex; align-items:center; gap:10px; padding:10px 18px; border-bottom:1px solid var(--line); }
+  header input { flex:1; background:transparent; border:none; color:inherit; font:600 15px system-ui; outline:none; }
+  #tok { color:var(--mute); font-size:12px; white-space:nowrap; }
+  #log { flex:1; overflow:auto; padding:20px 0; }
+  .col { max-width:780px; margin:0 auto; padding:0 18px; }
+  .msg { margin:0 0 18px; white-space:pre-wrap; word-wrap:break-word; }
+  .user { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 14px; }
+  .err { color:#c0392b; }
+  .sys { color:var(--mute); font-size:13px; }
+  details.tool { margin:0 0 12px; border:1px solid var(--line); border-radius:8px; font-size:13px; }
+  details.tool summary { padding:6px 10px; cursor:pointer; color:var(--mute); font-family:ui-monospace,monospace; }
+  details.tool pre { margin:0; padding:8px 10px; border-top:1px solid var(--line); overflow:auto; max-height:320px; font-size:12px; white-space:pre-wrap; }
+  pre.code { background:var(--code); color:#eee; border-radius:8px; padding:10px 12px; overflow:auto; }
+  code { background:var(--panel); padding:1px 5px; border-radius:4px; font-size:.92em; }
+  footer { border-top:1px solid var(--line); padding:12px 0 16px; }
+  .box { display:flex; gap:8px; align-items:flex-end; }
+  textarea { flex:1; resize:none; max-height:200px; background:var(--panel); color:inherit; border:1px solid var(--line); border-radius:12px; padding:10px 12px; font:inherit; outline:none; }
+  textarea:focus { border-color:var(--mute); }
+  #bar { display:flex; gap:8px; padding-bottom:8px; align-items:center; color:var(--mute); font-size:12px; }
+  #bar input { flex:1; background:transparent; border:1px solid var(--line); border-radius:6px; padding:3px 8px; color:inherit; font:inherit; }
+</style>
+</head>
+<body>
+<aside>
+  <h1>Gemini harness</h1>
+  <div id="projbar"><select id="proj"></select><button id="pnew" title="New project">+</button><button id="pedit" title="Project settings">&#9881;</button></div>
+  <div id="root"></div>
+  <button id="new" class="primary">+ New session</button>
+  <div id="list"></div>
+  <div id="blocks"><h2>Context blocks <button id="bnew" title="New block">+</button></h2><div id="blist"></div></div>
+</aside>
+<dialog id="bdlg">
+  <input id="bname" placeholder="block name (letters, digits, - _)">
+  <textarea id="btext" placeholder="Markdown notes loaded into every chat in this project"></textarea>
+  <div class="row"><button id="bdel">Delete</button><button id="bclose">Close</button><button id="bsave" class="primary">Save</button></div>
+</dialog>
+<main>
+  <header>
+    <input id="title" placeholder="Session title">
+    <select id="model"></select>
+    <button id="compact" title="Summarize older context">Compact</button>
+    <span id="tok"></span>
+  </header>
+  <div id="log"><div class="col" id="msgs"></div></div>
+  <footer><div class="col">
+    <div id="bar"><span>Instructions</span><input id="instr" placeholder="Optional standing instructions for this session"></div>
+    <div class="box">
+      <textarea id="in" rows="1" placeholder="Message (Enter to send, Shift+Enter for newline)"></textarea>
+      <button id="send" class="primary">Send</button>
+    </div>
+  </div></footer>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+let cur = null, cfg = {}, running = false, proj = null, projects = [];
+
+const api = async (m, url, body) => {
+  const r = await fetch(url, {method:m, headers:{'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : undefined});
+  if (!r.ok) throw new Error((await r.text()).slice(0, 300));
+  return r.json();
+};
+const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function md(t) {
+  return esc(t)
+    .replace(/```(?:\w+)?\n([\s\S]*?)```/g, (_, c) => `<pre class="code">${c}</pre>`)
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
+}
+function add(cls, html) {
+  const d = document.createElement('div'); d.className = 'msg ' + cls; d.innerHTML = html;
+  $('msgs').appendChild(d); $('log').scrollTop = 1e9; return d;
+}
+let lastTool = null;
+function toolCall(name, args) {
+  const d = document.createElement('details'); d.className = 'tool';
+  const a = Object.entries(args || {}).map(([k, v]) => `${k}=${JSON.stringify(String(v).slice(0, 60))}`).join(', ');
+  d.innerHTML = `<summary>${esc(name)}(${esc(a)})</summary><pre>${esc(JSON.stringify(args, null, 2))}</pre>`;
+  $('msgs').appendChild(d); lastTool = d; $('log').scrollTop = 1e9;
+}
+function toolResult(out) {
+  if (!lastTool) return;
+  const p = document.createElement('pre'); p.textContent = out; lastTool.appendChild(p);
+}
+function render(m) {
+  for (const p of m.parts) {
+    if (p.thought) continue;
+    if (p.text) add(m.role === 'user' ? 'user' : '', md(p.text));
+    if (p.functionCall) toolCall(p.functionCall.name, p.functionCall.args);
+    if (p.functionResponse) toolResult(p.functionResponse.response.output);
+  }
+}
+function setTok(n) { $('tok').textContent = n ? `${(n/1000).toFixed(1)}k ctx` : ''; }
+
+async function loadList() {
+  const ss = await api('GET', '/api/sessions?project=' + proj.id);
+  $('list').innerHTML = '';
+  for (const s of ss) {
+    const d = document.createElement('div'); d.className = 's' + (cur && cur.id === s.id ? ' on' : '');
+    d.innerHTML = `<span>${esc(s.title)}</span><small>${s.model}</small><button class="x" title="Delete">x</button>`;
+    d.onclick = () => open(s.id);
+    d.querySelector('.x').onclick = async e => {
+      e.stopPropagation(); if (!confirm('Delete this session?')) return;
+      await api('DELETE', '/api/sessions/' + s.id);
+      if (cur && cur.id === s.id) { cur = null; $('msgs').innerHTML = ''; }
+      loadList();
+    };
+    $('list').appendChild(d);
+  }
+}
+async function open(id) {
+  cur = await api('GET', '/api/sessions/' + id);
+  $('msgs').innerHTML = ''; lastTool = null;
+  cur.messages.forEach(render);
+  $('title').value = cur.title; $('model').value = cur.model; $('instr').value = cur.instructions || '';
+  setTok(cur.prompt_tokens); loadList();
+}
+async function newSession() {
+  const s = await api('POST', '/api/sessions', {project: proj.id, model: $('model').value || proj.model});
+  await open(s.id);
+}
+async function send() {
+  const text = $('in').value.trim(); if (!text || running) return;
+  if (!cur) await newSession();
+  $('in').value = ''; $('in').style.height = 'auto';
+  add('user', md(text)); running = true; $('send').textContent = 'Stop'; lastTool = null;
+  const r = await fetch(`/api/sessions/${cur.id}/chat`, {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({text, model: $('model').value})});
+  if (!r.ok) { add('err', esc(await r.text())); running = false; $('send').textContent = 'Send'; return; }
+  const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '';
+  while (true) {
+    const {value, done} = await rd.read(); if (done) break;
+    buf += dec.decode(value, {stream:true});
+    let i; while ((i = buf.indexOf('\n\n')) >= 0) {
+      const line = buf.slice(0, i); buf = buf.slice(i + 2);
+      if (!line.startsWith('data: ')) continue;
+      const e = JSON.parse(line.slice(6));
+      if (e.type === 'text') add('', md(e.text));
+      else if (e.type === 'tool_call') toolCall(e.name, e.args);
+      else if (e.type === 'tool_result') toolResult(e.output);
+      else if (e.type === 'usage') setTok(e.prompt_tokens);
+      else if (e.type === 'compacted') add('sys', 'Context compacted into a summary.');
+      else if (e.type === 'error') add('err', esc(e.error));
+    }
+  }
+  running = false; $('send').textContent = 'Send';
+  cur = await api('GET', '/api/sessions/' + cur.id); $('title').value = cur.title; loadList();
+}
+
+$('send').onclick = () => running ? api('POST', `/api/sessions/${cur.id}/stop`) : send();
+$('new').onclick = newSession;
+$('in').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } };
+$('in').oninput = e => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; };
+$('title').onchange = async () => { if (cur) { await api('PATCH', '/api/sessions/' + cur.id, {title: $('title').value}); loadList(); } };
+$('instr').onchange = async () => { if (cur) await api('PATCH', '/api/sessions/' + cur.id, {instructions: $('instr').value}); };
+$('model').onchange = async () => { if (cur) await api('PATCH', '/api/sessions/' + cur.id, {model: $('model').value}); loadList(); };
+$('compact').onclick = async () => {
+  if (!cur) return; const r = await api('POST', `/api/sessions/${cur.id}/compact`);
+  if (r.compacted) open(cur.id); else add('sys', 'Nothing to compact yet.');
+};
+async function loadBlocks() {
+  const bs = await api('GET', `/api/projects/${proj.id}/blocks`);
+  $('blist').innerHTML = '';
+  for (const b of bs) {
+    const d = document.createElement('div'); d.className = 'b';
+    d.innerHTML = `<span>${esc(b.name)}</span><small>${b.content.length}</small>`;
+    d.onclick = () => editBlock(b.name, b.content); $('blist').appendChild(d);
+  }
+  if (!bs.length) $('blist').innerHTML = '<div class="sys" style="padding:4px 10px">None yet. The agent can create them, or click +</div>';
+}
+function editBlock(name, content) {
+  $('bname').value = name || ''; $('bname').disabled = !!name; $('btext').value = content || ''; $('bdlg').showModal();
+}
+async function loadProjects(select) {
+  projects = await api('GET', '/api/projects'); $('proj').innerHTML = '';
+  for (const p of projects) $('proj').add(new Option(p.name, p.id));
+  await switchProject(select || (() => { try { return localStorage.getItem('proj'); } catch (e) { return null; } })());
+}
+async function switchProject(id) {
+  proj = projects.find(p => p.id === id) || projects[0]; $('proj').value = proj.id;
+  try { localStorage.setItem('proj', proj.id); } catch (e) {}
+  $('root').textContent = proj.root; $('model').value = proj.model || cfg.default_model;
+  cur = null; $('msgs').innerHTML = ''; setTok(0); $('title').value = ''; $('instr').value = '';
+  await loadBlocks();
+  const ss = await api('GET', '/api/sessions?project=' + proj.id);
+  await loadList(); if (ss.length) open(ss[0].id);
+}
+$('proj').onchange = () => switchProject($('proj').value);
+$('pnew').onclick = async () => {
+  const name = prompt('Project name'); if (!name) return;
+  const root = prompt('Project root folder (absolute path; the agent will read and edit files here)', proj ? proj.root : '');
+  if (root === null) return;
+  try { const p = await api('POST', '/api/projects', {name, root}); await loadProjects(p.id); } catch (e) { alert(e.message); }
+};
+$('pedit').onclick = async () => {
+  const root = prompt('Project root folder', proj.root); if (root && root !== proj.root) {
+    try { await api('PATCH', '/api/projects/' + proj.id, {root}); await loadProjects(proj.id); } catch (e) { alert(e.message); } }
+};
+$('bnew').onclick = () => editBlock('', '');
+$('bclose').onclick = () => $('bdlg').close();
+$('bsave').onclick = async () => {
+  const n = $('bname').value.trim(); if (!n) return;
+  try { await api('PUT', `/api/projects/${proj.id}/blocks/${encodeURIComponent(n)}`, {content: $('btext').value}); $('bdlg').close(); loadBlocks(); } catch (e) { alert(e.message); }
+};
+$('bdel').onclick = async () => {
+  const n = $('bname').value.trim(); if (!n || !confirm('Delete block ' + n + '?')) return;
+  await api('DELETE', `/api/projects/${proj.id}/blocks/${encodeURIComponent(n)}`); $('bdlg').close(); loadBlocks();
+};
+(async () => {
+  cfg = await api('GET', '/api/config');
+  for (const k of Object.keys(cfg.models)) $('model').add(new Option(`${k} (${cfg.models[k]})`, k));
+  await loadProjects();
+  if (!cfg.logged_in) add('err', 'Not logged in. Run <code>python -m harness login</code> in a terminal, then reload.');
+  if (!cfg.project) add('err', 'VERTEX_PROJECT is not set.');
+})();
+</script>
+</body>
+</html>

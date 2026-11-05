@@ -1,0 +1,41 @@
+{
+  "_readme": "Copy to ~/.harness/models.json and edit. Each key is a model alias you can pick in the UI/CLI. provider: gemini (Vertex login, or API key via api_key_env) | openai (any OpenAI-compatible /chat/completions API) | anthropic. Entries whose model starts with REPLACE are ignored until you edit them.",
+  "gemini-key": {
+    "provider": "gemini",
+    "model": "gemini-2.5-flash",
+    "api_key_env": "GEMINI_API_KEY"
+  },
+  "gemini-other-project": {
+    "provider": "gemini",
+    "model": "gemini-2.5-pro",
+    "project": "another-gcp-project",
+    "location": "us-central1"
+  },
+  "claude": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-5-5",
+    "api_key_env": "ANTHROPIC_API_KEY",
+    "max_tokens": 8192
+  },
+  "openai": {
+    "provider": "openai",
+    "model": "REPLACE-WITH-MODEL-ID",
+    "base_url": "https://api.openai.com/v1",
+    "api_key_env": "OPENAI_API_KEY"
+  },
+  "local": {
+    "provider": "openai",
+    "model": "REPLACE-WITH-LOCAL-MODEL",
+    "base_url": "http://localhost:11434/v1",
+    "api_key_env": ""
+  },
+  "gateway": {
+    "provider": "openai",
+    "model": "REPLACE-WITH-MODEL-ID",
+    "base_url": "https://your-gateway.example.com/v1",
+    "api_key_env": "GATEWAY_KEY",
+    "headers": {
+      "X-Example": "optional extra headers"
+    }
+  }
+}
