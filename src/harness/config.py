@@ -70,3 +70,11 @@ MAX_STEPS = int(os.environ.get("HARNESS_MAX_STEPS", "40"))
 COMPACT_AT = int(os.environ.get("HARNESS_COMPACT_AT", "80000"))        # compact when prompt exceeds this
 KEEP_TURNS = int(os.environ.get("HARNESS_KEEP_TURNS", "6"))            # full turns to keep after compaction
 HISTORY_TOOL_TRIM = int(os.environ.get("HARNESS_HISTORY_TOOL_TRIM", "2000"))  # max chars stored per tool result in history
+
+# --- privacy: mask secrets before anything is sent to a model (see redact.py) ---
+REDACT = os.environ.get("HARNESS_REDACT", "1") != "0"  # on by default; HARNESS_REDACT=0 disables
+REDACT_TERMS = [t.strip() for t in os.environ.get("HARNESS_REDACT_TERMS", "").split(",") if t.strip()]
+BLOCK_FILES = [  # file names the model may not read, write or edit (fnmatch, case-insensitive)
+    ".env", ".env.*", "*.pem", "*.key", "*.pfx", "*.p12", "*.keystore", "id_rsa*", "id_ed25519*",
+    "token.json", "credentials*", "secrets.*",
+] + [t.strip().lower() for t in os.environ.get("HARNESS_BLOCK_FILES", "").split(",") if t.strip()]

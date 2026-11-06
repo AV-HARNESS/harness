@@ -66,3 +66,16 @@ web_search needs a Gemini model configured; other tools work with every provider
 ## Layout
     auth.py OAuth | llm.py providers (gemini/openai/anthropic) | verify.py | tools.py bash/files/web | agent.py loop + compaction
     store.py projects/blocks/sessions | cli.py | server.py + static/index.html
+
+## Privacy: what is masked before a model call
+Everything sent to a model passes through `redact.py` first: the system prompt, your messages, tool results and
+tool-call arguments. It masks API keys, tokens, JWTs, private keys, `password=`/`secret=` style values, URL
+credentials, emails, internal IPs, SSNs and card numbers, the exact values of secret-looking environment variables
+(including everything in your `.env`), and any words in `HARNESS_REDACT_TERMS`. Masked values appear to the model as
+`[REDACTED:type]`; files on disk and your local history are not changed, and the model cannot write placeholders back.
+Sensitive files (`.env`, `*.pem`, `*.key`, `token.json`, `.harness/` ...) are blocked from the file tools.
+A one-line note on stderr says how many items were masked; it never prints the values.
+
+Limits: your source code is still sent (that is the point of the tool), and proprietary or client-specific content is
+only caught if you list it in `HARNESS_REDACT_TERMS`. Masking does not hide the calls themselves from your network or gateway.
+Preview it: `python -m harness redact "some text"`. Tests: `PYTHONPATH=src python -m pytest tests`.

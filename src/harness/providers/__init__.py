@@ -64,6 +64,10 @@ def generate(alias: str, contents: list, system: str = "", tools: list | None = 
     spec = config.MODELS.get(alias)
     if not spec:
         raise RuntimeError(f"Unknown model '{alias}'. Configured: {', '.join(config.MODELS)}")
+    if config.REDACT:  # mask secrets/PII in the copy that leaves this machine (files and history stay intact)
+        from .. import redact
+        contents, system, counts = redact.mask_request(contents, system)
+        redact.report(counts)
     provider = spec.get("provider", "gemini")
     fn = {"gemini": _g, "openai": _o, "anthropic": _a}.get(provider)
     if not fn:

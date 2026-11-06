@@ -144,6 +144,8 @@ def main() -> None:
     sv = sub.add_parser("serve", help="local web UI")
     sv.add_argument("--port", type=int, default=8765)
     sub.add_parser("projects", help="list projects")
+    rd = sub.add_parser("redact", help="preview what would be masked in some text (reads stdin if none given)")
+    rd.add_argument("text", nargs="*")
     a = ap.parse_args()
     if a.cmd == "login":
         auth.login(a.port)
@@ -153,6 +155,14 @@ def main() -> None:
     elif a.cmd == "serve":
         from .server import serve
         serve(a.port)
+    elif a.cmd == "redact":
+        import sys
+        from collections import Counter
+
+        from . import redact
+        counts: Counter = Counter()
+        print(redact.mask(" ".join(a.text) if a.text else sys.stdin.read(), counts))
+        redact.report(counts)
     elif a.cmd == "projects":
         store.ensure_default()
         for p in store.list_projects():

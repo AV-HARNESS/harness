@@ -1,4 +1,5 @@
 """Tools exposed to the model. No approval prompts: everything runs immediately."""
+import fnmatch
 import re
 import subprocess
 from contextvars import ContextVar
@@ -29,6 +30,20 @@ def _p(path: str) -> Path:
     return p if p.is_absolute() else _root() / p
 
 
+def _guard(p: Path, writing: str = "") -> str | None:
+    """Sensitive files are off limits to the model; masked placeholders must never be written back."""
+    name = p.name.lower()
+    safe = name.endswith((".example", ".sample", ".template"))
+    if ".harness" in (x.lower() for x in p.parts) or (
+            not safe and any(fnmatch.fnmatch(name, pat) for pat in config.BLOCK_FILES)):
+        return (f"ERROR: '{p.name}' is on the sensitive-file blocklist and is not available to you. "
+                "Ask the user to make the change, or work around it.")
+    if "[REDACTED:" in writing:
+        return ("ERROR: the text contains a [REDACTED:...] placeholder. That value is masked from you; "
+                "never write placeholders into files. Leave those lines alone and edit around them.")
+    return None
+
+
 def bash(command: str, timeout: int = 120) -> str:
     try:
         r = subprocess.run(command, shell=True, cwd=_root(), capture_output=True,
@@ -39,6 +54,8 @@ def bash(command: str, timeout: int = 120) -> str:
 
 
 def read_file(path: str, offset: int = 1, limit: int = 2000) -> str:
+    if err := _guard(_p(path)):
+        return err
     lines = _p(path).read_text(errors="replace").splitlines()
     chunk = lines[max(offset, 1) - 1: max(offset, 1) - 1 + limit]
     return _clip("\n".join(f"{i}\t{l}" for i, l in enumerate(chunk, max(offset, 1))))
@@ -46,6 +63,8 @@ def read_file(path: str, offset: int = 1, limit: int = 2000) -> str:
 
 def write_file(path: str, content: str) -> str:
     p = _p(path)
+    if err := _guard(p, content):
+        return err
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content)
     return f"wrote {len(content)} chars to {p}"
@@ -53,6 +72,8 @@ def write_file(path: str, content: str) -> str:
 
 def edit_file(path: str, old: str, new: str, replace_all: bool = False) -> str:
     p = _p(path)
+    if err := _guard(p, old + new):
+        return err
     text = p.read_text()
     n = text.count(old)
     if n == 0:

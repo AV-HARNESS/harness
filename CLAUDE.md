@@ -45,7 +45,8 @@ harness/
 - Project = root folder + context blocks (markdown notes) + sessions. Deleting a project never deletes the root.
 - Local storage only (`~/.harness/`). Never commit secrets, tokens, `.env`, or `~/.harness`.
 - No approval prompts or sandbox, by the owner's choice. Server binds to 127.0.0.1 only (no auth needed).
-- Config via env vars only; never log secrets. See `config.py` for the full list.
+- Config via env vars only; never log secrets.
+- Privacy: `redact.py` masks secrets/PII in every model request (hook is `providers.generate`); `tools._guard` blocks sensitive files. On by default; keep it that way. See `config.py` for the full list.
 - Context compaction: when `prompt_tokens > HARNESS_COMPACT_AT`, the agent summarises history in-place.
 
 ## Status
