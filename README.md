@@ -79,3 +79,19 @@ A one-line note on stderr says how many items were masked; it never prints the v
 Limits: your source code is still sent (that is the point of the tool), and proprietary or client-specific content is
 only caught if you list it in `HARNESS_REDACT_TERMS`. Masking does not hide the calls themselves from your network or gateway.
 Preview it: `python -m harness redact "some text"`. Tests: `PYTHONPATH=src python -m pytest tests`.
+
+## Spec and tests: how to trust this without reading code
+- **`SPEC.md`** lists everything the harness promises, one ID per line (`R-LOOP-01`, `R-PRIV-06`, ...).
+- **`tests/`** has at least one test per ID (`@covers("R-...")`). `tests/test_spec.py` fails if a spec line has no test, or a test points at an ID that isn't in the spec.
+- Items marked `[manual]` need live credentials; run `python -m harness verify` for those.
+- Tests use fake local servers only: no network, no real keys, no `~/.harness`.
+
+```
+pip install -e ".[dev]"
+pytest                                   # all tests, ~20s
+pytest -k R_PRIV -v                      # or: pytest tests/test_redact.py
+git config core.hooksPath .githooks      # once per clone: runs pytest before every git push
+```
+GitHub Actions (`.github/workflows/tests.yml`) runs the same suite on every push and PR, on Python 3.11 and 3.12. A red X on a commit means a promise in SPEC.md broke.
+
+Changing behaviour: edit `SPEC.md` and the test in the same commit.

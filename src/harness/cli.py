@@ -1,6 +1,9 @@
 """Command line: login | chat (default) | serve | projects."""
 import argparse
-import readline  # noqa: F401  (line editing + history for input())
+try:
+    import readline  # noqa: F401  (line editing + history; not available on Windows)
+except ImportError:
+    pass
 import threading
 
 from . import agent, auth, config, store

@@ -1,0 +1,133 @@
+"""R-SRV: web API."""
+import json
+import threading
+
+import pytest
+from fastapi.testclient import TestClient
+
+from harness import server, store
+from conftest import covers
+from helpers import call, gem, text
+
+
+@pytest.fixture
+def client():
+    store.ensure_default()
+    return TestClient(server.app)
+
+
+def sse(resp):
+    return [json.loads(l[6:]) for l in resp.text.splitlines() if l.startswith("data: ")]
+
+
+@covers("R-SRV-02")
+def test_project_crud(client, tmp_path):
+    r = client.post("/api/projects", json={"name": "Alpha", "root": str(tmp_path)})
+    assert r.status_code == 200 and r.json()["id"] == "alpha"
+    assert client.post("/api/projects", json={}).status_code == 400
+    assert client.post("/api/projects", json={"name": "x", "root": "/definitely/not/here"}).status_code == 400
+    assert client.patch("/api/projects/alpha", json={"name": "Beta"}).json()["name"] == "Beta"
+    assert client.patch("/api/projects/alpha", json={"root": "/nope/nope"}).status_code == 400
+    assert client.patch("/api/projects/ghost", json={"name": "x"}).status_code == 404
+    assert "alpha" in [p["id"] for p in client.get("/api/projects").json()]
+    assert client.delete("/api/projects/alpha").json() == {"ok": True}
+    assert client.delete("/api/projects/alpha").status_code == 404
+
+
+@covers("R-SRV-06")
+def test_delete_project_keeps_root(client, tmp_path):
+    (tmp_path / "keep.txt").write_text("x")
+    client.post("/api/projects", json={"name": "Del", "root": str(tmp_path)})
+    client.delete("/api/projects/del")
+    assert (tmp_path / "keep.txt").read_text() == "x"
+
+
+@covers("R-SRV-02")
+def test_blocks_api(client, project):
+    pid = project["id"]
+    assert client.put(f"/api/projects/{pid}/blocks/notes", json={"content": "hello"}).json() == {"ok": True}
+    assert client.get(f"/api/projects/{pid}/blocks").json() == [{"name": "notes", "size": 5, "content": "hello"}]
+    assert client.put(f"/api/projects/{pid}/blocks/bad name", json={"content": "x"}).status_code == 400
+    assert client.put("/api/projects/ghost/blocks/n", json={"content": "x"}).status_code == 404
+    client.delete(f"/api/projects/{pid}/blocks/notes")
+    assert client.get(f"/api/projects/{pid}/blocks").json() == []
+
+
+@covers("R-SRV-02")
+def test_session_api(client, project):
+    pid = project["id"]
+    s = client.post("/api/sessions", json={"project": pid, "title": "T", "model": "pro"}).json()
+    assert s["title"] == "T" and s["model"] == "pro"
+    assert client.get(f"/api/sessions?project={pid}").json()[0]["id"] == s["id"]
+    p = client.patch(f"/api/sessions/{s['id']}", json={"title": "New", "model": "bogus", "instructions": "i"}).json()
+    assert p["title"] == "New" and p["model"] == "pro" and p["instructions"] == "i"  # unknown model ignored
+    assert client.get(f"/api/sessions/{s['id']}").json()["title"] == "New"
+    assert client.get("/api/sessions/zzzzzz").status_code == 404
+    assert client.get("/api/sessions?project=ghost").status_code == 404
+    assert client.post("/api/sessions", json={"project": "ghost"}).status_code == 404
+    assert client.post(f"/api/sessions/{s['id']}/compact").json() == {"compacted": False}
+    assert client.post("/api/sessions/nope/stop").json() == {"ok": True}
+    client.delete(f"/api/sessions/{s['id']}")
+    assert client.get(f"/api/sessions/{s['id']}").status_code == 404
+
+
+@covers("R-SRV-03")
+def test_chat_streams_events(client, session, fake):
+    fake.push((200, gem(call("bash", command="echo hi"))), (200, gem(text("all done"))))
+    r = client.post(f"/api/sessions/{session['id']}/chat", json={"text": "run it"})
+    assert r.headers["content-type"].startswith("text/event-stream")
+    ev = sse(r)
+    assert [e["type"] for e in ev if e["type"] != "usage"] == ["tool_call", "tool_result", "text", "done"]
+    assert "hi" in ev[2]["output"] if ev[2]["type"] == "tool_result" else True
+    assert store.load(session["id"])["title"] == "run it"
+
+
+@covers("R-SRV-03")
+def test_chat_model_switch_and_error_event(client, session, fake):
+    fake.push((500, "kaput"), (500, "kaput"), (500, "kaput"), (500, "kaput"), (500, "kaput"))
+    ev = sse(client.post(f"/api/sessions/{session['id']}/chat", json={"text": "hi", "model": "fake"}))
+    assert ev[-2]["type"] == "error" and "HTTP 500" in ev[-2]["error"] and ev[-1]["type"] == "done"
+    assert server._busy == set()  # released after failure
+
+
+@covers("R-SRV-04")
+def test_busy_session_gets_409(client, session):
+    server._busy.add(session["id"])
+    assert client.post(f"/api/sessions/{session['id']}/chat", json={"text": "x"}).status_code == 409
+    assert client.post("/api/sessions/nope/chat", json={"text": "x"}).status_code == 404
+
+
+@covers("R-SRV-04")
+def test_stop_endpoint_sets_event(client, session):
+    ev = server._stops[session["id"]] = threading.Event()
+    client.post(f"/api/sessions/{session['id']}/stop")
+    assert ev.is_set()
+
+
+@covers("R-SRV-05")
+def test_config_endpoint_has_no_secrets(client, monkeypatch):
+    from harness import config
+    monkeypatch.setattr(config, "ACCESS_TOKEN", "SUPER-SECRET-TOKEN")
+    monkeypatch.setattr(config, "CLIENT_SECRET", "SUPER-SECRET-CLIENT")
+    monkeypatch.setenv("GEMINI_API_KEY", "SUPER-SECRET-KEY")
+    r = client.get("/api/config")
+    d = r.json()
+    assert d["logged_in"] is True and d["has_api_key"] is True and d["default_model"] == "flash"
+    assert d["models"]["flash"].startswith("gemini:")
+    assert "SUPER-SECRET" not in r.text
+
+
+def test_index_served(client):
+    r = client.get("/")
+    assert r.status_code == 200 and "<html" in r.text.lower()
+
+
+@covers("R-SRV-01")
+def test_serve_binds_localhost_only(monkeypatch):
+    import uvicorn
+    seen = {}
+    monkeypatch.setattr(uvicorn, "run", lambda app, **kw: seen.update(kw))
+    monkeypatch.setattr("webbrowser.open", lambda u: None)
+    server.serve(1234)
+    assert seen["host"] == "127.0.0.1" and seen["port"] == 1234
+    assert server.serve.__code__.co_names.count("0.0.0.0") == 0

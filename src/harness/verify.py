@@ -60,6 +60,8 @@ def _tool_round_trip(alias: str) -> str:
 
 
 def main(aliases: list[str]) -> int:
+    global ok_all
+    ok_all = True  # reset: the flag is module-level and must not leak between runs
     aliases = aliases or list(config.MODELS)
     def mode(a):
         sp = config.MODELS[a]

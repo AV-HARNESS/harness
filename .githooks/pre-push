@@ -1,0 +1,4 @@
+#!/bin/sh
+# Runs the test suite before every push. Enable once per clone:  git config core.hooksPath .githooks
+echo "[pre-push] running tests (skip with: git push --no-verify)"
+python -m pytest || { echo "[pre-push] tests failed, push aborted"; exit 1; }
