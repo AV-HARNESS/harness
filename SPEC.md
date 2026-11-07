@@ -66,6 +66,10 @@ Change behaviour => change this file and the test in the same commit.
 - **R-PRIV-07** The model cannot write `[REDACTED:` placeholders into files.
 - **R-PRIV-08** `HARNESS_REDACT=0` turns masking off.
 - **R-PRIV-09** Every provider path (Gemini, OpenAI, Anthropic, web_search, compaction, verify) goes through the same masking choke point.
+- **R-PRIV-11** `HARNESS_REDACT_STRICT=1` also masks 9+ digit numbers and user names inside paths; default off.
+- **R-PRIV-12** `HARNESS_REDACT_PATTERNS` (regexes separated by `||`) are masked as `[REDACTED:custom]`.
+- **R-PRIV-13** `HARNESS_AUDIT_LOG` records every outgoing request as sent (masked system prompt, messages, tool names, mask counts), one JSON line each; it never contains the real values of masked secrets or any credential.
+- **R-PRIV-14** `HARNESS_DRY_RUN=1` builds and masks the request, logs or prints it, and does not call the model or need credentials.
 - **R-PRIV-10** [manual] Confirm in the org's LLM log viewer that no secret appears in a captured request.
 
 ## 7. Web server (`server.py`)

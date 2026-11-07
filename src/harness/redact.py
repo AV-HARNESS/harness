@@ -61,6 +61,13 @@ _PATTERNS: list[tuple[str, re.Pattern, object]] = [
 ]
 
 
+_STRICT = [
+    ("long_number", re.compile(r"\b\d{9,}\b"), "[REDACTED:number]"),
+    ("user_path", re.compile(r"(?i)((?:[A-Z]:[\\/]+Users|/Users|/home)[\\/]+)(?!public\b|shared\b)[^\\/\s\"']+"),
+     r"\1[REDACTED:user]"),
+]
+
+
 def _known_secrets() -> list[tuple[str, str]]:
     """Exact values of secret-looking environment variables (includes everything loaded from .env)."""
     found = {v: k for k, v in os.environ.items() if len(v) >= 8 and _SECRET_ENV_NAME.search(k)}
@@ -92,10 +99,20 @@ def mask(text: str, counts: Counter | None = None) -> str:
         text, n = _sub(rx, repl, text)
         if n:
             counts[label] += n
+    extra = _STRICT if config.REDACT_STRICT else []
+    for label, rx, repl in extra:
+        text, n = _sub(rx, repl, text)
+        if n:
+            counts[label] += n
+    for i, pat in enumerate(config.REDACT_PATTERNS):
+        text, n = re.subn(pat, "[REDACTED:custom]", text)
+        if n:
+            counts["custom"] += n
     if config.REDACT_TERMS:
         rx = re.compile("|".join(re.escape(t) for t in config.REDACT_TERMS), re.I)
         text, n = rx.subn("[REDACTED:term]", text)
-        counts["term"] += n
+        if n:
+            counts["term"] += n
     return text
 
 

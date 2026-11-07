@@ -147,3 +147,64 @@ def test_compaction_and_web_search_are_masked(fake, model, monkeypatch, session)
     fake.push((200, {"candidates": [{"content": {"parts": [{"text": "ans"}]}}]}))
     t.web_search("what is 10.1.2.3 and bob@example.com")
     assert "bob@example.com" not in str(fake.requests[-1]["body"])
+
+
+@covers("R-PRIV-11")
+def test_strict_mode(monkeypatch):
+    text = r"acct 123456789012 in C:\Users\jdoe\proj and /home/alice/x and /Users/Public/f line 12345"
+    assert redact.mask(text) == text  # off by default
+    monkeypatch.setattr(config, "REDACT_STRICT", True)
+    out = redact.mask(text)
+    assert "123456789012" not in out and "jdoe" not in out and "alice" not in out
+    assert "Public" in out and "12345" in out  # short numbers and shared dirs stay
+
+
+@covers("R-PRIV-12")
+def test_custom_patterns(monkeypatch):
+    monkeypatch.setattr(config, "REDACT_PATTERNS", [r"ACME-\d{6}", r"cust_[a-z]+"])
+    assert redact.mask("see ACME-123456 for cust_bob ok") == "see [REDACTED:custom] for [REDACTED:custom] ok"
+
+
+@covers("R-PRIV-13")
+def test_audit_log_records_masked_request_only(fake, model, monkeypatch, tmp_path):
+    import json
+    from harness import providers
+    log = tmp_path / "logs" / "audit.jsonl"
+    monkeypatch.setattr(config, "AUDIT_LOG", log)
+    fake.push((200, {"candidates": [{"content": {"parts": [{"text": "ok"}]}}]}), (200, {"candidates": [{"content": {"parts": [{"text": "ok"}]}}]}))
+    for _ in range(2):
+        providers.generate(model, [{"role": "user", "parts": [{"text": "password = CanaryPass12345 mail bob@example.com"}]}],
+                           "sys", [{"functionDeclarations": [{"name": "bash", "description": "d", "parameters": {}}]}])
+    lines = log.read_text().splitlines()
+    assert len(lines) == 2
+    rec = json.loads(lines[0])
+    raw = log.read_text()
+    assert "CanaryPass12345" not in raw and "bob@example.com" not in raw and "fake-key-123456789" not in raw
+    assert rec["model"] == "m" and rec["tools"] == ["bash"] and rec["masked"] == {"secret": 1, "email": 1} and rec["dry_run"] is False
+    assert "[REDACTED:email]" in rec["contents"][0]["parts"][0]["text"]
+    # what was logged is what was sent
+    assert fake.requests[0]["body"]["contents"] == rec["contents"]
+
+
+@covers("R-PRIV-14")
+def test_dry_run_sends_nothing(fake, model, monkeypatch, tmp_path, capsys):
+    from harness import providers
+    monkeypatch.setattr(config, "DRY_RUN", True)
+    c, usage, _ = providers.generate(model, [{"role": "user", "parts": [{"text": "mail bob@example.com"}]}], "S")
+    assert fake.requests == [] and "dry run" in c["parts"][0]["text"] and usage == {}
+    err = capsys.readouterr().err
+    assert "[dry-run]" in err and "[REDACTED:email]" in err and "bob@example.com" not in err
+    log = tmp_path / "a.jsonl"
+    monkeypatch.setattr(config, "AUDIT_LOG", log)
+    providers.generate(model, [{"role": "user", "parts": [{"text": "hi"}]}])
+    assert log.exists() and '"dry_run": true' in log.read_text()
+
+
+@covers("R-PRIV-14")
+def test_dry_run_works_through_agent_loop_without_credentials(session, monkeypatch):
+    from harness import agent
+    monkeypatch.setattr(config, "DRY_RUN", True)
+    monkeypatch.delenv("FAKE_KEY", raising=False)
+    ev = []
+    agent.run_turn(session, "hello", ev.append)
+    assert any("dry run" in e.get("text", "") for e in ev)

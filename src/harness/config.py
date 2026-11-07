@@ -78,3 +78,12 @@ BLOCK_FILES = [  # file names the model may not read, write or edit (fnmatch, ca
     ".env", ".env.*", "*.pem", "*.key", "*.pfx", "*.p12", "*.keystore", "id_rsa*", "id_ed25519*",
     "token.json", "credentials*", "secrets.*",
 ] + [t.strip().lower() for t in os.environ.get("HARNESS_BLOCK_FILES", "").split(",") if t.strip()]
+
+# strict mode also masks long numbers and user names in paths; extra regexes (separated by ||) are masked too
+REDACT_STRICT = os.environ.get("HARNESS_REDACT_STRICT", "0") == "1"
+REDACT_PATTERNS = [t.strip() for t in os.environ.get("HARNESS_REDACT_PATTERNS", "").split("||") if t.strip()]
+# audit log: every request exactly as sent (after masking), one JSON line each. "1" = <HOME>/audit.jsonl, or a path.
+_audit = os.environ.get("HARNESS_AUDIT_LOG", "")
+AUDIT_LOG = (HOME / "audit.jsonl") if _audit == "1" else (Path(_audit).expanduser() if _audit else None)
+# dry run: build and mask the request, log/print it, but do not call the model
+DRY_RUN = os.environ.get("HARNESS_DRY_RUN", "0") == "1"

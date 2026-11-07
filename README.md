@@ -80,6 +80,11 @@ Limits: your source code is still sent (that is the point of the tool), and prop
 only caught if you list it in `HARNESS_REDACT_TERMS`. Masking does not hide the calls themselves from your network or gateway.
 Preview it: `python -m harness redact "some text"`. Tests: `PYTHONPATH=src python -m pytest tests`.
 
+### See exactly what leaves your machine
+- `HARNESS_DRY_RUN=1`: builds and masks the request, prints it to the terminal, sends nothing (no credentials needed).
+- `HARNESS_AUDIT_LOG=1`: every request is also written, as sent, to `~/.harness/audit.jsonl` (or give a path). Open it to see what a gateway log would contain.
+- `HARNESS_REDACT_STRICT=1`: also masks 9+ digit numbers and user names in paths. `HARNESS_REDACT_PATTERNS='ACME-\d{6}||cust_[a-z]+'` masks your own patterns.
+
 ## Spec and tests: how to trust this without reading code
 - **`SPEC.md`** lists everything the harness promises, one ID per line (`R-LOOP-01`, `R-PRIV-06`, ...).
 - **`tests/`** has at least one test per ID (`@covers("R-...")`). `tests/test_spec.py` fails if a spec line has no test, or a test points at an ID that isn't in the spec.
