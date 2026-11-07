@@ -68,6 +68,7 @@ def chat(resume: str | None = None, project: str | None = None) -> None:
         s = _latest_or_new(proj)
 
     def banner():
+        print(f"{DIM}data {config.HOME}{RST}")
         print(f"{DIM}project {proj['name']} ({proj['root']}) - session {s['id']} '{s['title']}' - {s['model']} - /help{RST}")
 
     banner()

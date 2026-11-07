@@ -111,6 +111,28 @@ def test_corrupt_files_do_not_break_listing(project):
     assert [p["id"] for p in store.list_projects()] == [project["id"]]
 
 
+@covers("R-STORE-09")
+def test_everything_is_stored_in_the_central_folder_not_the_project(project):
+    from pathlib import Path
+    store.write_block(project["id"], "notes", "x")
+    s = store.create(project["id"])
+    root = Path(project["root"])
+    assert list(root.iterdir()) == []  # nothing written into the user's project folder
+    for p in (config.PROJECTS_DIR / project["id"] / "blocks" / "notes.md", config.PROJECTS_DIR / project["id"] / "sessions" / f"{s['id']}.json"):
+        assert p.exists() and config.HOME in p.parents
+
+
+@covers("R-STORE-09")
+def test_harness_home_env_is_used_and_tilde_expanded(tmp_path):
+    import os, subprocess, sys
+    from pathlib import Path
+    env = {**os.environ, "HOME": str(tmp_path), "USERPROFILE": str(tmp_path), "HARNESS_HOME": "~/central",
+           "PYTHONPATH": str(Path(__file__).parent.parent / "src")}
+    out = subprocess.run([sys.executable, "-c", "from harness import config; print(config.HOME)"], capture_output=True, text=True, env=env, cwd=tmp_path).stdout.strip()
+    assert out == str(tmp_path / "central") and (tmp_path / "central" / "projects").is_dir()
+    env.pop("HARNESS_HOME")
+    out = subprocess.run([sys.executable, "-c", "from harness import config; print(config.HOME)"], capture_output=True, text=True, env=env, cwd=tmp_path).stdout.strip()
+    assert out.endswith(".harness") and "src" not in out.replace("\\", "/").split("/")[-2:]
 @covers("R-STORE-08")
 def test_writes_are_atomic_and_leave_no_temp_files(project, monkeypatch):
     import os
