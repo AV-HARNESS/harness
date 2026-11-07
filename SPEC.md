@@ -9,7 +9,7 @@ Change behaviour => change this file and the test in the same commit.
 
 ## 1. Agent loop (`agent.py`)
 - **R-LOOP-01** A turn sends history to the model, runs every tool call it returns, feeds results back, and repeats until the model answers without tool calls.
-- **R-LOOP-02** A turn stops after `HARNESS_MAX_STEPS` model calls and tells the user to say "continue".
+- **R-LOOP-02** A turn stops after `HARNESS_MAX_STEPS` model calls (default 200) and tells the user to say "continue".
 - **R-LOOP-03** A stop request ends the turn before the next model call (not mid-call).
 - **R-LOOP-04** Tool output stored in history is trimmed to `HARNESS_HISTORY_TOOL_TRIM` chars; the UI event still gets the full output.
 - **R-LOOP-05** The system prompt is rebuilt on every step with project name, root, all context blocks (per-block and total size caps) and session instructions, so block edits apply immediately.

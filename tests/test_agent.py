@@ -131,3 +131,13 @@ def test_error_keeps_user_message(session, fake):
 def test_unknown_tool_does_not_crash_loop(session, fake):
     ev = run(session, "go", fake, gem(call("nope")), gem(text("ok")))
     assert "unknown tool" in next(e for e in ev if e["type"] == "tool_result")["output"]
+
+
+@covers("R-LOOP-02")
+def test_default_step_cap_is_200():
+    import os, subprocess, sys
+    env = {k: v for k, v in os.environ.items() if k != "HARNESS_MAX_STEPS"}
+    env["PYTHONPATH"] = str(__import__("pathlib").Path(__file__).parent.parent / "src")
+    out = subprocess.run([sys.executable, "-c", "from harness import config; print(config.MAX_STEPS)"],
+                         capture_output=True, text=True, env=env).stdout.strip()
+    assert out == "200"
