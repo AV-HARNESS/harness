@@ -18,7 +18,7 @@ except ImportError:
 
 # Default: .harness/ inside the project root (two levels up from src/harness/)
 _PROJECT_ROOT = Path(__file__).parent.parent.parent  # harness/src/harness -> harness/
-HOME = Path(os.environ.get("HARNESS_HOME", _PROJECT_ROOT / ".harness"))
+HOME = Path(os.environ.get("HARNESS_HOME") or _PROJECT_ROOT / ".harness").expanduser()
 PROJECTS_DIR = HOME / "projects"
 LEGACY_SESSIONS_DIR = HOME / "sessions"  # pre-project layout, migrated on first run
 TOKEN_FILE = HOME / "token.json"

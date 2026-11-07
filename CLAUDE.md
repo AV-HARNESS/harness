@@ -43,7 +43,7 @@ harness/
 ## Key decisions
 - History in Gemini `contents` format; every provider translates to/from it so sessions are portable.
 - Project = root folder + context blocks (markdown notes) + sessions. Deleting a project never deletes the root.
-- Local storage only (`~/.harness/`). Never commit secrets, tokens, `.env`, or `~/.harness`.
+- Local storage only (`~/.harness/`). Never commit secrets, tokens, `.env`, or `HARNESS_HOME` (default `<repo>/.harness`).
 - No approval prompts or sandbox, by the owner's choice. Server binds to 127.0.0.1 only (no auth needed).
 - Config via env vars only; never log secrets.
 - Privacy: `redact.py` masks secrets/PII in every model request (hook is `providers.generate`); `tools._guard` blocks sensitive files. On by default; keep it that way. See `config.py` for the full list.
@@ -52,7 +52,7 @@ harness/
 ## Spec and tests (source of truth)
 - `SPEC.md` = what the harness promises (IDs `R-AREA-NN`). `tests/` verifies every ID via `@covers("R-...")`; `tests/test_spec.py` enforces the mapping.
 - Behaviour change => update SPEC.md + tests in the same commit. Run `pytest` before pushing (CI runs it on every push; `.githooks/pre-push` too).
-- Tests never touch network, real keys, or `~/.harness` (see `tests/conftest.py`).
+- Tests never touch network, real keys, or `HARNESS_HOME` (default `<repo>/.harness`) (see `tests/conftest.py`).
 
 ## Status
 Automated tests use fake local servers only. NOT yet run against real Vertex, OpenAI, Anthropic, or the org gateway.
