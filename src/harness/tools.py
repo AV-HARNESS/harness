@@ -27,7 +27,11 @@ def _root() -> Path:
 
 def _p(path: str) -> Path:
     p = Path(path).expanduser()
-    return p if p.is_absolute() else _root() / p
+    p = p if p.is_absolute() else _root() / p
+    if config.CONFINE and not p.resolve().is_relative_to(_root().resolve()):
+        raise PermissionError(f"'{path}' is outside the project folder ({_root()}). "
+                              "File tools only work inside the linked folder.")
+    return p
 
 
 def _guard(p: Path, writing: str = "") -> str | None:

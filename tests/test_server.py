@@ -131,3 +131,57 @@ def test_serve_binds_localhost_only(monkeypatch):
     server.serve(1234)
     assert seen["host"] == "127.0.0.1" and seen["port"] == 1234
     assert server.serve.__code__.co_names.count("0.0.0.0") == 0
+
+
+@covers("R-SRV-07")
+def test_fs_lists_folders_and_files(client, tmp_path):
+    tmp_path = tmp_path / "browse"
+    tmp_path.mkdir()
+    (tmp_path / "b_dir").mkdir()
+    (tmp_path / "A_dir").mkdir()
+    (tmp_path / ".hidden").mkdir()
+    (tmp_path / "x.py").write_text("1")
+    (tmp_path / ".env").write_text("SECRET=1")
+    (tmp_path / "key.pem").write_text("k")
+    d = client.get("/api/fs", params={"path": str(tmp_path)}).json()
+    assert d["path"] == str(tmp_path.resolve()) and d["parent"] == str(tmp_path.resolve().parent)
+    assert [e["name"] for e in d["entries"]] == ["A_dir", "b_dir"] and all(e["dir"] for e in d["entries"])
+    d = client.get("/api/fs", params={"path": str(tmp_path), "files": "1"}).json()
+    assert [e["name"] for e in d["entries"]] == ["A_dir", "b_dir", "x.py"]  # no hidden, no .env, no *.pem
+    assert client.get("/api/fs", params={"path": str(tmp_path / "nope")}).status_code == 400
+    assert client.get("/api/fs", params={"path": str(tmp_path / "x.py")}).status_code == 400
+    assert client.get("/api/fs").json()["path"]  # defaults to the home folder
+
+
+@covers("R-SRV-08")
+def test_fs_project_scope_stays_inside_root(client, project):
+    from pathlib import Path
+    root = Path(project["root"])
+    (root / "sub").mkdir()
+    (root / "sub" / "f.txt").write_text("x")
+    d = client.get("/api/fs", params={"project": project["id"], "files": "1"}).json()
+    assert d["path"] == str(root.resolve()) and d["parent"] is None and d["entries"][0]["rel"] == "sub"
+    d = client.get("/api/fs", params={"project": project["id"], "files": "1", "path": str(root / "sub")}).json()
+    assert d["entries"] == [{"name": "f.txt", "dir": False, "rel": "sub/f.txt"}] and d["parent"] == str(root.resolve())
+    assert client.get("/api/fs", params={"project": project["id"], "path": str(root.parent)}).status_code == 400
+    assert client.get("/api/fs", params={"project": project["id"], "path": str(root / "..")}).status_code == 400
+    assert client.get("/api/fs", params={"project": "ghost"}).status_code == 404
+
+
+@covers("R-SRV-02")
+def test_linking_a_folder_changes_where_the_agent_works(client, session, fake, tmp_path):
+    new_root = tmp_path / "newroot"
+    new_root.mkdir()
+    assert client.patch(f"/api/projects/{session['project']}", json={"root": str(new_root)}).status_code == 200
+    fake.push((200, gem(call("write_file", path="made.txt", content="hi"))), (200, gem(text("done"))))
+    client.post(f"/api/sessions/{session['id']}/chat", json={"text": "go"})
+    assert (new_root / "made.txt").read_text() == "hi"
+
+
+@covers("R-UI-01")
+def test_ui_has_composer_controls(client):
+    html = client.get("/").text
+    for el in ('id="plus"', 'id="menu"', 'id="m-folder"', 'id="m-attach"', 'id="m-instr"', 'id="model"', 'id="mic"',
+               'id="voice"', 'id="send"', 'id="fdlg"', 'id="froot"', "/api/fs", "SpeechRecognition", "speechSynthesis"):
+        assert el in html, el
+    assert html.index('id="plus"') < html.index('id="model"') < html.index('id="mic"') < html.index('id="send"')  # layout order

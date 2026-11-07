@@ -56,6 +56,8 @@ Change behaviour => change this file and the test in the same commit.
 - **R-TOOL-07** `web_search` needs a Gemini model and returns answer plus sources; says so otherwise.
 - **R-TOOL-08** Very long output is clipped in the middle.
 
+- **R-TOOL-09** File tools (read, write, edit, list) work only inside the linked project folder: `..`, absolute paths and symlinks that lead outside are refused (`HARNESS_CONFINE=0` turns this off). `bash` starts in the folder but is not sandboxed.
+
 ## 6. Privacy (`redact.py`, `tools.py`)
 - **R-PRIV-01** Before any model call, API keys and tokens (Google, OpenAI/Anthropic style, GitHub, AWS, Slack, JWT, private keys, bearer headers) are replaced by `[REDACTED:kind]`.
 - **R-PRIV-02** Password / secret / token style assignments are masked; ordinary code is left alone.
@@ -79,6 +81,11 @@ Change behaviour => change this file and the test in the same commit.
 - **R-SRV-04** A session already running rejects a second chat with 409.
 - **R-SRV-05** `/api/config` reports models, default model and login state; never returns secrets.
 - **R-SRV-06** Deleting a project via the API leaves its root folder intact.
+
+- **R-SRV-07** `GET /api/fs` lists folders (and with `files=1` non-sensitive files) so the UI can link a folder; hidden entries are skipped.
+- **R-SRV-08** With `project=<id>`, `/api/fs` stays inside that project's root (used for attaching files).
+- **R-UI-01** The page has the Claude-style composer: a `+` menu (link folder, attach files, instructions, voice language), the model picker, a dictation mic, a voice-mode button and send; a folder picker dialog; and the linked folder shown above the box.
+- **R-UI-02** [manual] In a browser: dictation fills the box live and waits for you to send; voice mode sends when you stop talking and reads the reply aloud; the folder picker links a folder and the agent then works there; attached files appear as chips.
 
 ## 8. CLI and verify (`cli.py`, `verify.py`)
 - **R-CLI-01** `python -m harness redact "<text>"` prints the masked text and a report.

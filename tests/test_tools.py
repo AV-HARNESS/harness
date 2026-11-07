@@ -97,3 +97,30 @@ def test_long_output_is_clipped_in_the_middle(inproject):
 def test_every_registered_tool_is_declared():
     names = {d["name"] for d in tools.DECLARATIONS[0]["functionDeclarations"]}
     assert names == set(tools.REGISTRY) and len(names) == 10
+
+
+@covers("R-TOOL-09")
+def test_file_tools_confined_to_project_folder(inproject, tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("nope")
+    root = inproject["root"]
+    import os
+    os.symlink(outside, f"{root}/link")
+    for args in ({"path": "../outside/secret.txt"}, {"path": str(outside / "secret.txt")}, {"path": "link/secret.txt"}):
+        assert "outside the project folder" in tools.run("read_file", args)
+    assert "outside the project folder" in tools.run("write_file", {"path": "../evil.txt", "content": "x"})
+    assert not (tmp_path / "evil.txt").exists() and not (outside / "evil.txt").exists()
+    assert "outside the project folder" in tools.run("write_file", {"path": "link/evil.txt", "content": "x"})
+    assert "outside the project folder" in tools.run("list_dir", {"path": ".."})
+    assert "outside the project folder" in tools.run("edit_file", {"path": "../outside/secret.txt", "old": "nope", "new": "x"})
+    assert (outside / "secret.txt").read_text() == "nope"
+    assert "wrote" in tools.run("write_file", {"path": "inside.txt", "content": "ok"})  # inside still works
+    assert "ok" in tools.run("read_file", {"path": f"{root}/inside.txt"})
+
+
+@covers("R-TOOL-09")
+def test_confinement_can_be_switched_off(inproject, tmp_path, monkeypatch):
+    (tmp_path / "elsewhere.txt").write_text("hi")
+    monkeypatch.setattr(config, "CONFINE", False)
+    assert "hi" in tools.run("read_file", {"path": str(tmp_path / "elsewhere.txt")})

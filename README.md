@@ -80,6 +80,12 @@ Limits: your source code is still sent (that is the point of the tool), and prop
 only caught if you list it in `HARNESS_REDACT_TERMS`. Masking does not hide the calls themselves from your network or gateway.
 Preview it: `python -m harness redact "some text"`. Tests: `PYTHONPATH=src python -m pytest tests`.
 
+### Web UI (Claude-style composer)
+- **`+` menu**: link a folder (the agent then works only there), attach files from it, session instructions, voice language.
+- **Model picker** sits in the composer. **Mic** dictates into the box (you press Enter to send). **Headphones** = voice mode: it sends when you stop talking and reads the reply aloud.
+- File tools (read/write/edit/list) are confined to the linked folder (`HARNESS_CONFINE=0` to turn off). `bash` starts there but is not sandboxed.
+- Voice uses the browser's speech recognition; in Chrome/Edge the audio goes to the browser vendor's speech service, not to the model.
+
 ### See exactly what leaves your machine
 - `HARNESS_DRY_RUN=1`: builds and masks the request, prints it to the terminal, sends nothing (no credentials needed).
 - `HARNESS_AUDIT_LOG=1`: every request is also written, as sent, to `~/.harness/audit.jsonl` (or give a path). Open it to see what a gateway log would contain.

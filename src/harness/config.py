@@ -87,3 +87,6 @@ _audit = os.environ.get("HARNESS_AUDIT_LOG", "")
 AUDIT_LOG = (HOME / "audit.jsonl") if _audit == "1" else (Path(_audit).expanduser() if _audit else None)
 # dry run: build and mask the request, log/print it, but do not call the model
 DRY_RUN = os.environ.get("HARNESS_DRY_RUN", "0") == "1"
+
+# file tools may only touch the linked project folder (symlinks and .. are resolved). Set 0 to allow anywhere.
+CONFINE = os.environ.get("HARNESS_CONFINE", "1") != "0"

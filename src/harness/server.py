@@ -1,5 +1,6 @@
 """Local web UI + JSON/SSE API. Binds to localhost only."""
 import json
+import os
 import queue
 import threading
 from pathlib import Path
@@ -8,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import agent, auth, config, store
+from . import agent, auth, config, store, tools
 
 app = FastAPI(title="Gemini harness")
 store.ensure_default()
@@ -69,6 +70,42 @@ def _proj(pid: str) -> dict:
         return store.get_project(pid)
     except KeyError:
         raise HTTPException(404, "no such project")
+
+
+@app.get("/api/fs")
+def browse(path: str = "", files: bool = False, project: str = ""):
+    """List folders (and optionally files) so the UI can link a folder. With `project`, stays inside its root."""
+    root = Path(_proj(project)["root"]).resolve() if project else None
+    if os.name == "nt" and path == "@drives" and not root:
+        drives = [f"{c}:\\" for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" if Path(f"{c}:\\").exists()]
+        return {"path": "@drives", "parent": None, "entries": [{"name": d, "dir": True, "rel": d} for d in drives]}
+    p = Path(path).expanduser() if path else (root or Path.home())
+    try:
+        p = p.resolve()
+    except OSError as e:
+        raise HTTPException(400, str(e))
+    if root and not p.is_relative_to(root):
+        raise HTTPException(400, "outside the project folder")
+    if not p.is_dir():
+        raise HTTPException(400, f"not a folder: {p}")
+    entries = []
+    try:
+        for c in sorted(p.iterdir(), key=lambda c: (not c.is_dir(), c.name.lower())):
+            if c.name.startswith("."):
+                continue
+            try:
+                isdir = c.is_dir()
+            except OSError:
+                continue
+            if isdir or (files and tools._guard(c) is None):
+                rel = c.relative_to(root).as_posix() if root else str(c)
+                entries.append({"name": c.name, "dir": isdir, "rel": rel})
+            if len(entries) >= 500:
+                break
+    except PermissionError:
+        raise HTTPException(400, "permission denied")
+    parent = None if (root and p == root) else (str(p.parent) if p.parent != p else ("@drives" if os.name == "nt" and not root else None))
+    return {"path": str(p), "parent": parent, "entries": entries}
 
 
 @app.get("/api/projects")

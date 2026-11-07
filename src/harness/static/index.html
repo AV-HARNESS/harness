@@ -49,14 +49,28 @@
   pre.code { background:var(--code); color:#eee; border-radius:8px; padding:10px 12px; overflow:auto; }
   code { background:var(--panel); padding:1px 5px; border-radius:4px; font-size:.92em; }
   footer { border-top:1px solid var(--line); padding:12px 0 16px; }
-  .box { display:flex; gap:8px; align-items:flex-end; }
-  textarea { flex:1; resize:none; max-height:200px; background:var(--panel); color:inherit; border:1px solid var(--line); border-radius:12px; padding:10px 12px; font:inherit; outline:none; }
-  textarea:focus { border-color:var(--mute); }
-  #bar { display:flex; gap:8px; padding-bottom:8px; align-items:center; color:var(--mute); font-size:12px; }
-  #bar input { flex:1; background:transparent; border:1px solid var(--line); border-radius:6px; padding:3px 8px; color:inherit; font:inherit; }
-  #mic { border-radius:50%; width:38px; height:38px; padding:0; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:18px; transition:background .2s; }
-  #mic.listening { background:var(--accent); border-color:var(--accent); color:#fff; animation:pulse 1s infinite; }
+  .composer { background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:10px 12px 8px; }
+  .composer:focus-within { border-color:var(--mute); }
+  .composer textarea { width:100%; resize:none; max-height:200px; background:transparent; color:inherit; border:none; padding:4px 2px 8px; font:inherit; outline:none; }
+  .crow { display:flex; align-items:center; gap:6px; }
+  .crow .sp { flex:1; }
+  .ic { width:34px; height:34px; padding:0; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:17px; flex-shrink:0; }
+  #model { border:none; color:var(--mute); font-size:13px; max-width:230px; padding:6px 4px; }
+  #mic.listening, #voice.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  #mic.listening { animation:pulse 1s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+  .menu { position:absolute; bottom:46px; left:0; background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:6px; min-width:260px; box-shadow:0 6px 24px rgba(0,0,0,.18); z-index:5; }
+  .menu button { display:block; width:100%; text-align:left; border:none; padding:8px 10px; }
+  .menu button:hover { background:var(--panel); }
+  .menu small { display:block; color:var(--mute); padding:2px 10px 4px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; padding-bottom:6px; }
+  .chip { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:2px 8px; font-size:12px; display:flex; gap:6px; align-items:center; }
+  .chip b { cursor:pointer; color:var(--mute); font-weight:400; }
+  #folder { color:var(--mute); font-size:12px; padding:0 4px 6px; display:flex; gap:6px; align-items:center; }
+  #fdlg .fl { height:320px; overflow:auto; border:1px solid var(--line); border-radius:8px; margin-bottom:8px; }
+  #fdlg .fi { padding:6px 10px; cursor:pointer; display:flex; gap:8px; align-items:center; }
+  #fdlg .fi:hover { background:var(--panel); }
+  #fdlg .bar { display:flex; gap:6px; margin-bottom:8px; } #fdlg .bar input { margin:0; }
 </style>
 </head>
 <body>
@@ -76,20 +90,42 @@
 <main>
   <header>
     <input id="title" placeholder="Session title">
-    <select id="model"></select>
     <button id="compact" title="Summarize older context">Compact</button>
     <span id="tok"></span>
   </header>
   <div id="log"><div class="col" id="msgs"></div></div>
-  <footer><div class="col">
-    <div id="bar"><span>Instructions</span><input id="instr" placeholder="Optional standing instructions for this session"></div>
-    <div class="box">
+  <footer><div class="col" style="position:relative">
+    <div id="folder"><span>&#128193;</span><span id="froot"></span><button id="fchange" style="padding:1px 8px;font-size:12px">Change</button></div>
+    <div class="composer">
+      <div class="chips" id="chips" hidden></div>
       <textarea id="in" rows="1" placeholder="Message (Enter to send, Shift+Enter for newline)"></textarea>
-      <button id="mic" title="Voice input (click to speak)">🎤</button>
-      <button id="send" class="primary">Send</button>
+      <div class="crow">
+        <button id="plus" class="ic" title="Add: link a folder, attach files, instructions">+</button>
+        <div class="menu" id="menu" hidden>
+          <button id="m-folder">&#128193; Link a folder&hellip;</button>
+          <button id="m-attach">&#128206; Attach files from the folder&hellip;</button>
+          <button id="m-instr">&#9998; Session instructions&hellip;</button>
+          <button id="m-lang">&#127760; Voice language: <span id="langname"></span></button>
+          <small>The agent works only inside the linked folder.</small>
+        </div>
+        <span class="sp"></span>
+        <select id="model" title="Model"></select>
+        <button id="voice" class="ic" title="Voice mode: talk, it answers out loud">&#127911;</button>
+        <button id="mic" class="ic" title="Dictate (click to start/stop)">&#127908;</button>
+        <button id="send" class="primary ic" title="Send">&#8593;</button>
+      </div>
     </div>
   </div></footer>
 </main>
+<dialog id="fdlg">
+  <div class="bar"><button id="fup">&#8593; Up</button><input id="fpath" placeholder="folder path"><button id="fgo">Go</button></div>
+  <div class="fl" id="flist"></div>
+  <div class="row"><button id="fcancel">Cancel</button><button id="fok" class="primary">Use this folder</button></div>
+</dialog>
+<dialog id="idlg">
+  <input id="instr" placeholder="Optional standing instructions for this session">
+  <div class="row"><button id="iclose" class="primary">Done</button></div>
+</dialog>
 <script>
 const $ = id => document.getElementById(id);
 let cur = null, cfg = {}, running = false, proj = null, projects = [];
@@ -110,7 +146,8 @@ function add(cls, html) {
   const d = document.createElement('div'); d.className = 'msg ' + cls; d.innerHTML = html;
   $('msgs').appendChild(d); $('log').scrollTop = 1e9; return d;
 }
-let lastTool = null;
+let lastTool = null, spoken = '', files = [], voiceMode = false;
+const setSend = on => { $('send').innerHTML = on ? '&#9632;' : '&#8593;'; $('send').title = on ? 'Stop' : 'Send'; };
 function toolCall(name, args) {
   const d = document.createElement('details'); d.className = 'tool';
   const a = Object.entries(args || {}).map(([k, v]) => `${k}=${JSON.stringify(String(v).slice(0, 60))}`).join(', ');
@@ -159,13 +196,14 @@ async function newSession() {
   await open(s.id);
 }
 async function send() {
-  const text = $('in').value.trim(); if (!text || running) return;
+  let text = $('in').value.trim(); if (!text || running) return;
+  if (files.length) { text = 'Attached files (read them with read_file):\n' + files.map(f => '- ' + f).join('\n') + '\n\n' + text; files = []; drawChips(); }
   if (!cur) await newSession();
   $('in').value = ''; $('in').style.height = 'auto';
-  add('user', md(text)); running = true; $('send').textContent = 'Stop'; lastTool = null;
+  add('user', md(text)); running = true; setSend(true); lastTool = null;
   const r = await fetch(`/api/sessions/${cur.id}/chat`, {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({text, model: $('model').value})});
-  if (!r.ok) { add('err', esc(await r.text())); running = false; $('send').textContent = 'Send'; return; }
+  if (!r.ok) { add('err', esc(await r.text())); running = false; setSend(false); return; }
   const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '';
   while (true) {
     const {value, done} = await rd.read(); if (done) break;
@@ -174,7 +212,7 @@ async function send() {
       const line = buf.slice(0, i); buf = buf.slice(i + 2);
       if (!line.startsWith('data: ')) continue;
       const e = JSON.parse(line.slice(6));
-      if (e.type === 'text') add('', md(e.text));
+      if (e.type === 'text') { add('', md(e.text)); spoken += ' ' + e.text; }
       else if (e.type === 'tool_call') toolCall(e.name, e.args);
       else if (e.type === 'tool_result') toolResult(e.output);
       else if (e.type === 'usage') setTok(e.prompt_tokens);
@@ -182,11 +220,12 @@ async function send() {
       else if (e.type === 'error') add('err', esc(e.error));
     }
   }
-  running = false; $('send').textContent = 'Send';
+  running = false; setSend(false);
+  if (voiceMode) speak(spoken); spoken = '';
   cur = await api('GET', '/api/sessions/' + cur.id); $('title').value = cur.title; loadList();
 }
 
-$('send').onclick = () => running ? api('POST', `/api/sessions/${cur.id}/stop`) : send();
+$('send').onclick = () => { if ('speechSynthesis' in window) speechSynthesis.cancel(); running ? api('POST', `/api/sessions/${cur.id}/stop`) : send(); };
 $('new').onclick = newSession;
 $('in').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } };
 $('in').oninput = e => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; };
@@ -218,8 +257,8 @@ async function loadProjects(select) {
 async function switchProject(id) {
   proj = projects.find(p => p.id === id) || projects[0]; $('proj').value = proj.id;
   try { localStorage.setItem('proj', proj.id); } catch (e) {}
-  $('root').textContent = proj.root; $('model').value = proj.model || cfg.default_model;
-  cur = null; $('msgs').innerHTML = ''; setTok(0); $('title').value = ''; $('instr').value = '';
+  $('froot').textContent = proj.root; $('root').textContent = proj.root; $('model').value = proj.model || cfg.default_model;
+  cur = null; files = []; drawChips(); $('msgs').innerHTML = ''; setTok(0); $('title').value = ''; $('instr').value = '';
   await loadBlocks();
   const ss = await api('GET', '/api/sessions?project=' + proj.id);
   await loadList(); if (ss.length) open(ss[0].id);
@@ -227,12 +266,13 @@ async function switchProject(id) {
 $('proj').onchange = () => switchProject($('proj').value);
 $('pnew').onclick = async () => {
   const name = prompt('Project name'); if (!name) return;
-  const root = prompt('Project root folder (absolute path; the agent will read and edit files here)', proj ? proj.root : '');
-  if (root === null) return;
+  const root = await pickFolder('link', proj ? proj.root : ''); if (!root) return;
   try { const p = await api('POST', '/api/projects', {name, root}); await loadProjects(p.id); } catch (e) { alert(e.message); }
 };
-$('pedit').onclick = async () => {
-  const root = prompt('Project root folder', proj.root); if (root && root !== proj.root) {
+$('pedit').onclick = $('fchange').onclick = $('m-folder').onclick = async () => {
+  $('menu').hidden = true;
+  const root = await pickFolder('link', proj.root);
+  if (root && root !== proj.root) {
     try { await api('PATCH', '/api/projects/' + proj.id, {root}); await loadProjects(proj.id); } catch (e) { alert(e.message); } }
 };
 $('bnew').onclick = () => editBlock('', '');
@@ -245,32 +285,97 @@ $('bdel').onclick = async () => {
   const n = $('bname').value.trim(); if (!n || !confirm('Delete block ' + n + '?')) return;
   await api('DELETE', `/api/projects/${proj.id}/blocks/${encodeURIComponent(n)}`); $('bdlg').close(); loadBlocks();
 };
-// ---- voice input ----
-const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-if (!SpeechRecognition) {
-  $('mic').title = 'Voice not supported in this browser (use Chrome or Safari)';
-  $('mic').disabled = true;
-} else {
-  const rec = new SpeechRecognition();
-  rec.continuous = false; rec.interimResults = true; rec.lang = 'en-US';
-  let listening = false;
-  rec.onresult = e => {
-    const t = Array.from(e.results).map(r => r[0].transcript).join('');
-    $('in').value = t;
-    $('in').style.height = 'auto'; $('in').style.height = $('in').scrollHeight + 'px';
-    if (e.results[e.results.length - 1].isFinal) { listening = false; $('mic').classList.remove('listening'); send(); }
-  };
-  rec.onerror = e => { listening = false; $('mic').classList.remove('listening'); };
-  rec.onend = () => { listening = false; $('mic').classList.remove('listening'); };
-  $('mic').onclick = () => {
-    if (listening) { rec.stop(); return; }
-    $('in').value = ''; listening = true; $('mic').classList.add('listening'); rec.start();
-  };
+// ---- folder picker (server-side listing; browsers cannot reveal absolute paths) ----
+let fmode = 'link', fpath = '', fsel = new Set(), fres = null;
+function pickFolder(mode, start) {
+  fmode = mode; fsel = new Set(); $('fok').textContent = mode === 'link' ? 'Use this folder' : 'Attach selected';
+  return new Promise(async resolve => {
+    fres = resolve; $('fdlg').showModal();
+    try { await browse(start); } catch (e) { await browse('').catch(() => {}); }
+  });
 }
+async function browse(path) {
+  const q = new URLSearchParams({path: path || '', files: fmode === 'attach' ? '1' : '0'});
+  if (fmode === 'attach') q.set('project', proj.id);
+  const r = await api('GET', '/api/fs?' + q);
+  fpath = r.path; $('fpath').value = r.path; $('fup').disabled = !r.parent; $('fup').dataset.p = r.parent || '';
+  $('flist').innerHTML = '';
+  for (const e of r.entries) {
+    const d = document.createElement('div'); d.className = 'fi';
+    if (e.dir) { d.innerHTML = `&#128193; ${esc(e.name)}`; d.onclick = () => browse(r.path === '@drives' ? e.name : r.path.replace(/[\\/]+$/, '') + (r.path.includes('\\') ? '\\' : '/') + e.name).catch(x => alert(x.message)); }
+    else { d.innerHTML = `<input type="checkbox" style="margin:0;width:auto"> ${esc(e.name)}`;
+      const cb = d.querySelector('input'); cb.checked = fsel.has(e.rel);
+      d.onclick = ev => { if (ev.target !== cb) cb.checked = !cb.checked; cb.checked ? fsel.add(e.rel) : fsel.delete(e.rel); }; }
+    $('flist').appendChild(d);
+  }
+  if (!r.entries.length) $('flist').innerHTML = '<div class="sys" style="padding:10px">Nothing here.</div>';
+}
+$('fup').onclick = () => browse($('fup').dataset.p).catch(x => alert(x.message));
+$('fgo').onclick = () => browse($('fpath').value).catch(x => alert(x.message));
+$('fpath').onkeydown = e => { if (e.key === 'Enter') $('fgo').click(); };
+const fdone = v => { $('fdlg').close(); if (fres) { fres(v); fres = null; } };
+$('fcancel').onclick = () => fdone(null);
+$('fdlg').addEventListener('cancel', () => fdone(null));
+$('fok').onclick = () => fdone(fmode === 'link' ? (fpath === '@drives' ? null : fpath) : [...fsel]);
+function drawChips() {
+  $('chips').hidden = !files.length; $('chips').innerHTML = '';
+  files.forEach((f, i) => { const c = document.createElement('span'); c.className = 'chip'; c.innerHTML = `${esc(f)} <b>&times;</b>`;
+    c.querySelector('b').onclick = () => { files.splice(i, 1); drawChips(); }; $('chips').appendChild(c); });
+}
+
+// ---- "+" menu ----
+$('plus').onclick = e => { e.stopPropagation(); $('menu').hidden = !$('menu').hidden; };
+document.addEventListener('click', e => { if (!$('menu').contains(e.target)) $('menu').hidden = true; });
+$('m-attach').onclick = async () => {
+  $('menu').hidden = true; const picked = await pickFolder('attach', proj.root);
+  if (picked) { for (const f of picked) if (!files.includes(f)) files.push(f); drawChips(); }
+};
+$('m-instr').onclick = () => { $('menu').hidden = true; $('idlg').showModal(); };
+$('iclose').onclick = () => $('idlg').close();
+
+// ---- voice: dictation (mic) and voice mode (headphones) ----
+// Uses the browser's speech recognition. In Chrome/Edge this sends the audio to the browser vendor's speech
+// service (not to the model); Safari may do it on-device. Replies are spoken with the built-in speechSynthesis.
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const LANGS = [['en-US', 'English (US)'], ['en-IN', 'English (India)'], ['hi-IN', 'Hindi']];
+let lang = (() => { try { return localStorage.getItem('lang'); } catch (e) { return null; } })() || 'en-US';
+const showLang = () => $('langname').textContent = (LANGS.find(l => l[0] === lang) || [0, lang])[1];
+showLang();
+$('m-lang').onclick = e => {
+  e.stopPropagation(); lang = LANGS[(LANGS.findIndex(l => l[0] === lang) + 1) % LANGS.length][0];
+  try { localStorage.setItem('lang', lang); } catch (x) {} showLang(); if (rec) rec.lang = lang;
+};
+let rec = null, listening = false, base = '';
+function fit() { $('in').style.height = 'auto'; $('in').style.height = $('in').scrollHeight + 'px'; }
+function startListening() {
+  if (!SR || listening || running) return;
+  rec = new SR(); rec.lang = lang; rec.continuous = !voiceMode; rec.interimResults = true;
+  base = $('in').value ? $('in').value.replace(/\s*$/, ' ') : '';
+  rec.onresult = e => {
+    $('in').value = base + Array.from(e.results).map(r => r[0].transcript).join('').trim(); fit();
+    if (voiceMode && e.results[e.results.length - 1].isFinal) { rec.stop(); send(); }
+  };
+  rec.onerror = e => { if (e.error === 'not-allowed') alert('Microphone access was blocked for this page.'); stopUi(); };
+  rec.onend = stopUi;
+  listening = true; $('mic').classList.add('listening'); rec.start();
+}
+function stopUi() { listening = false; $('mic').classList.remove('listening'); }
+function speak(t) {
+  if (!('speechSynthesis' in window) || !t.trim()) { if (voiceMode) startListening(); return; }
+  const u = new SpeechSynthesisUtterance(t.replace(/```[\s\S]*?```/g, ' code block. ').replace(/[`*#]/g, ''));
+  u.lang = lang; u.onend = () => { if (voiceMode) startListening(); };
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
+}
+if (!SR) { for (const id of ['mic', 'voice']) { $(id).disabled = true; $(id).title = 'Voice is not supported in this browser (use Chrome, Edge or Safari)'; } }
+$('mic').onclick = () => listening ? rec.stop() : startListening();
+$('voice').onclick = () => {
+  voiceMode = !voiceMode; $('voice').classList.toggle('on', voiceMode);
+  if (voiceMode) startListening(); else { speechSynthesis.cancel(); if (listening) rec.stop(); }
+};
 
 (async () => {
   cfg = await api('GET', '/api/config');
-  for (const k of Object.keys(cfg.models)) $('model').add(new Option(`${k} (${cfg.models[k]})`, k));
+  for (const k of Object.keys(cfg.models)) $('model').add(new Option(`${k} · ${cfg.models[k].split(':').slice(1).join(':')}`, k));
   await loadProjects();
   if (!cfg.has_api_key && !cfg.logged_in) add('err', 'Not logged in. Set <code>GEMINI_API_KEY</code> in your .env, or run <code>python -m harness login</code> for Vertex, then reload.');
   if (!cfg.has_api_key && !cfg.project) add('err', 'VERTEX_PROJECT is not set. Set <code>GEMINI_API_KEY</code> in your .env to use the Gemini API instead.');
