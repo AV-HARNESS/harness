@@ -27,6 +27,7 @@ Change behaviour => change this file and the test in the same commit.
 - **R-PROV-06** Empty or missing model output yields a placeholder text, never a crash; no candidates raises.
 - **R-PROV-07** Unknown model alias or provider gives an error listing valid choices.
 - **R-PROV-08** History is provider-neutral (Gemini format): the same session can continue on a different provider.
+- **R-PROV-10** Vertex location is chosen per model: alias `location`, else `MODEL_LOCATIONS` entry for that model, else `VERTEX_LOCATION`.
 - **R-PROV-09** `models.json` adds aliases; entries whose model starts with `REPLACE` or alias starts with `_` are ignored.
 
 ## 3. Auth (`auth.py`)

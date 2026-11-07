@@ -236,3 +236,21 @@ def test_shipped_example_models_file_is_valid_and_placeholders_inert(monkeypatch
         assert spec["provider"] in ("gemini", "openai", "anthropic")
         assert (alias in models) == (not spec["model"].startswith("REPLACE"))
         assert not any(k in spec for k in ("api_key", "token", "secret"))  # keys come from env vars only
+
+
+@covers("R-PROV-10")
+def test_location_is_per_model(fake, monkeypatch):
+    monkeypatch.setattr(config, "ACCESS_TOKEN", "t")
+    monkeypatch.setattr(config, "PROJECT", "p")
+    monkeypatch.setattr(config, "HOST", fake.url)
+    monkeypatch.setattr(config, "LOCATION", "us-central1")
+    monkeypatch.setattr(config, "MODEL_LOCATIONS", {"pro-m": "global", "flash-m": "us"})
+    monkeypatch.setitem(config.MODELS, "a", {"provider": "gemini", "model": "pro-m"})
+    monkeypatch.setitem(config.MODELS, "b", {"provider": "gemini", "model": "flash-m"})
+    monkeypatch.setitem(config.MODELS, "c", {"provider": "gemini", "model": "other"})
+    monkeypatch.setitem(config.MODELS, "d", {"provider": "gemini", "model": "pro-m", "location": "eu1"})
+    for alias in "abcd":
+        fake.push((200, gem(text("ok"))))
+        providers.generate(alias, HIST)
+    locs = [r["path"].split("/locations/")[1].split("/")[0] for r in fake.requests]
+    assert locs == ["global", "us", "us-central1", "eu1"]
