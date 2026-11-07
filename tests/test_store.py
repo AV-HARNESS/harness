@@ -109,3 +109,43 @@ def test_corrupt_files_do_not_break_listing(project):
     (config.PROJECTS_DIR / "junk" / "project.json").write_text("{bad")
     assert len(store.list_all(project["id"])) == 1
     assert [p["id"] for p in store.list_projects()] == [project["id"]]
+
+
+@covers("R-STORE-08")
+def test_writes_are_atomic_and_leave_no_temp_files(project, monkeypatch):
+    import os
+    s = store.create(project["id"])
+    path = config.PROJECTS_DIR / project["id"] / "sessions" / f"{s['id']}.json"
+    seen = []
+    real = os.replace
+
+    def spy(a, b):  # at the moment of the swap the old file is still complete and the new one is complete too
+        seen.append((json.loads(open(b).read())["title"], json.loads(open(a).read())["title"]))
+        return real(a, b)
+    monkeypatch.setattr(os, "replace", spy)
+    s["title"] = "new title"
+    store.save(s)
+    assert seen and seen[-1][1] == "new title" and seen[-1][0] != "new title"
+    assert json.loads(path.read_text())["title"] == "new title"
+    assert [p.name for p in path.parent.iterdir()] == [path.name]  # no .tmp left behind
+
+
+@covers("R-STORE-08")
+def test_reader_retries_an_empty_file_then_succeeds(project, monkeypatch):
+    s = store.create(project["id"])
+    path = config.PROJECTS_DIR / project["id"] / "sessions" / f"{s['id']}.json"
+    good = path.read_text()
+    path.write_text("")  # what a reader sees while another thread is mid-write
+
+    def heal(_):
+        path.write_text(good)
+    monkeypatch.setattr("time.sleep", heal)
+    assert store.load(s["id"])["id"] == s["id"]
+
+
+@covers("R-STORE-08")
+def test_permanently_corrupt_file_still_raises(project):
+    s = store.create(project["id"])
+    (config.PROJECTS_DIR / project["id"] / "sessions" / f"{s['id']}.json").write_text("")
+    with pytest.raises(json.JSONDecodeError):
+        store.load(s["id"])
