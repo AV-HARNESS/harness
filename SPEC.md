@@ -44,6 +44,7 @@ Change behaviour => change this file and the test in the same commit.
 - **R-STORE-04** Sessions persist full history and round-trip unchanged; listing is newest first.
 - **R-STORE-05** Ids and names cannot escape the storage folder (path traversal rejected).
 - **R-STORE-06** First run creates a `default` project and migrates legacy sessions into it.
+- **R-STORE-08** Files are written atomically, so a reader never sees a half-written session; an empty or partial file is retried briefly before it counts as an error.
 - **R-STORE-07** Updating a project changes name, root (validated) and model (only known aliases).
 
 ## 5. Tools (`tools.py`)
