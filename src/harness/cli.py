@@ -5,6 +5,7 @@ try:
 except ImportError:
     pass
 import threading
+from pathlib import Path
 
 from . import agent, auth, config, store
 
@@ -44,13 +45,26 @@ def _latest_or_new(project: dict) -> dict:
     return store.load(ss[0]["id"]) if ss else store.create(project["id"])
 
 
+def project_for_cwd() -> dict:
+    """The project whose root contains the current folder (deepest match), or a new one for this folder."""
+    cwd = Path.cwd().resolve()
+    best = None
+    for p in store.list_projects():
+        r = Path(p["root"]).resolve()
+        if (cwd == r or r in cwd.parents) and (best is None or len(str(r)) > len(str(best[0]))):
+            best = (r, p)
+    if best:
+        return best[1]
+    return store.create_project(cwd.name or "project", str(cwd))
+
+
 def chat(resume: str | None = None, project: str | None = None) -> None:
     store.ensure_default()
     if resume:
         s = store.load(resume)
         proj = store.get_project(s["project"])
     else:
-        proj = (_find_project(project) if project else None) or store.list_projects()[0]
+        proj = (_find_project(project) if project else None) or project_for_cwd()  # default: the folder you are in
         s = _latest_or_new(proj)
 
     def banner():

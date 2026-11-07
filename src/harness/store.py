@@ -5,6 +5,7 @@
     sessions/*.json  full chat histories
 """
 import json
+import os
 import re
 import shutil
 import threading
@@ -24,8 +25,28 @@ def _slug(name: str) -> str:
 
 
 def _write(path: Path, text: str) -> None:
+    """Atomic: write a temp file, then swap it in, so a reader never sees a half-written (empty) file."""
     with _lock:
-        path.write_text(text)
+        tmp = path.with_name(f".{path.name}.{threading.get_ident()}.tmp")
+        tmp.write_text(text)
+        for i in range(10):
+            try:
+                os.replace(tmp, path)
+                return
+            except PermissionError:  # Windows: target briefly open in a reader
+                time.sleep(0.05)
+        os.replace(tmp, path)
+
+
+def _read_json(path: Path) -> dict:
+    """Read JSON; an empty/partial file (a write in flight, or a crash) is retried briefly before failing."""
+    for i in range(5):
+        try:
+            return json.loads(path.read_text())
+        except json.JSONDecodeError:
+            if i == 4:
+                raise
+            time.sleep(0.05)
 
 
 # ---------------- projects ----------------
@@ -60,7 +81,7 @@ def create_project(name: str, root: str | None = None, model: str | None = None)
 
 
 def get_project(pid: str) -> dict:
-    return json.loads((_pdir(pid) / "project.json").read_text())
+    return _read_json(_pdir(pid) / "project.json")
 
 
 def list_projects() -> list[dict]:
@@ -158,7 +179,7 @@ def create(project: str, title: str = "New session", model: str | None = None, i
 
 
 def load(sid: str) -> dict:
-    return json.loads(_spath(sid).read_text())
+    return _read_json(_spath(sid))
 
 
 def save(s: dict) -> None:

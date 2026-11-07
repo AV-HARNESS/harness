@@ -9,7 +9,7 @@ Change behaviour => change this file and the test in the same commit.
 
 ## 1. Agent loop (`agent.py`)
 - **R-LOOP-01** A turn sends history to the model, runs every tool call it returns, feeds results back, and repeats until the model answers without tool calls.
-- **R-LOOP-02** A turn stops after `HARNESS_MAX_STEPS` model calls and tells the user to say "continue".
+- **R-LOOP-02** A turn stops after `HARNESS_MAX_STEPS` model calls (default 200) and tells the user to say "continue".
 - **R-LOOP-03** A stop request ends the turn before the next model call (not mid-call).
 - **R-LOOP-04** Tool output stored in history is trimmed to `HARNESS_HISTORY_TOOL_TRIM` chars; the UI event still gets the full output.
 - **R-LOOP-05** The system prompt is rebuilt on every step with project name, root, all context blocks (per-block and total size caps) and session instructions, so block edits apply immediately.
@@ -45,6 +45,7 @@ Change behaviour => change this file and the test in the same commit.
 - **R-STORE-05** Ids and names cannot escape the storage folder (path traversal rejected).
 - **R-STORE-06** First run creates a `default` project and migrates legacy sessions into it.
 - **R-STORE-09** All projects, blocks and sessions live in one central folder, `HARNESS_HOME` (default `<repo>/.harness`; `~` is expanded), never inside your project folders; the server and CLI print its path at start.
+- **R-STORE-08** Files are written atomically, so a reader never sees a half-written session; an empty or partial file is retried briefly before it counts as an error.
 - **R-STORE-07** Updating a project changes name, root (validated) and model (only known aliases).
 
 ## 5. Tools (`tools.py`)
@@ -92,6 +93,7 @@ Change behaviour => change this file and the test in the same commit.
 
 ## 8. CLI and verify (`cli.py`, `verify.py`)
 - **R-CLI-01** `python -m harness redact "<text>"` prints the masked text and a report.
+- **R-CLI-03** `python -m harness` run inside a folder opens the project whose root contains that folder (deepest match), or creates one for it; `--project` / `--resume` override this.
 - **R-CLI-02** `python -m harness projects` lists projects.
 - **R-VER-01** `verify` exits 0 only when every check passes and prints an actionable hint for known failures.
 - **R-VER-02** [manual] `verify` against real Vertex / gateway / OpenAI / Anthropic.

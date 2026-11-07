@@ -66,7 +66,7 @@ DEFAULT_MODEL = os.environ.get("HARNESS_DEFAULT_MODEL", "flash")
 
 # --- agent ---
 WORKDIR = Path(os.environ.get("HARNESS_WORKDIR", os.getcwd())).resolve()  # default root for new projects
-MAX_STEPS = int(os.environ.get("HARNESS_MAX_STEPS", "40"))
+MAX_STEPS = int(os.environ.get("HARNESS_MAX_STEPS", "200"))
 COMPACT_AT = int(os.environ.get("HARNESS_COMPACT_AT", "80000"))        # compact when prompt exceeds this
 KEEP_TURNS = int(os.environ.get("HARNESS_KEEP_TURNS", "6"))            # full turns to keep after compaction
 HISTORY_TOOL_TRIM = int(os.environ.get("HARNESS_HISTORY_TOOL_TRIM", "2000"))  # max chars stored per tool result in history
