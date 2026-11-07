@@ -162,7 +162,8 @@ def test_fs_project_scope_stays_inside_root(client, project):
     d = client.get("/api/fs", params={"project": project["id"], "files": "1"}).json()
     assert d["path"] == str(root.resolve()) and d["parent"] is None and d["entries"][0]["rel"] == "sub"
     d = client.get("/api/fs", params={"project": project["id"], "files": "1", "path": str(root / "sub")}).json()
-    assert d["entries"] == [{"name": "f.txt", "dir": False, "rel": "sub/f.txt"}] and d["parent"] == str(root.resolve())
+    assert [{k: v for k, v in e.items() if k != "mtime"} for e in d["entries"]] == [{"name": "f.txt", "dir": False, "rel": "sub/f.txt"}]
+    assert d["entries"][0]["mtime"] > 0 and d["parent"] == str(root.resolve())
     assert client.get("/api/fs", params={"project": project["id"], "path": str(root.parent)}).status_code == 400
     assert client.get("/api/fs", params={"project": project["id"], "path": str(root / "..")}).status_code == 400
     assert client.get("/api/fs", params={"project": "ghost"}).status_code == 404
@@ -182,6 +183,23 @@ def test_linking_a_folder_changes_where_the_agent_works(client, session, fake, t
 def test_ui_has_composer_controls(client):
     html = client.get("/").text
     for el in ('id="plus"', 'id="menu"', 'id="m-folder"', 'id="m-attach"', 'id="m-instr"', 'id="model"', 'id="mic"',
-               'id="voice"', 'id="send"', 'id="fdlg"', 'id="froot"', "/api/fs", "SpeechRecognition", "speechSynthesis"):
+               'id="voice"', 'id="send"', 'id="fdlg"', 'id="froot"', 'id="places"', 'id="crumbs"', 'id="fback"', 'id="dx"', 'id="dok"', 'id="wave"', "/api/fs", "SpeechRecognition", "speechSynthesis"):
         assert el in html, el
     assert html.index('id="plus"') < html.index('id="model"') < html.index('id="mic"') < html.index('id="send"')  # layout order
+
+
+@covers("R-SRV-09")
+def test_places_for_the_folder_picker(client, tmp_path, monkeypatch):
+    from pathlib import Path
+    home = tmp_path / "fakehome"
+    for n in ("Desktop", "Documents"):
+        (home / n).mkdir(parents=True)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    (tmp_path / "work").mkdir()
+    client.post("/api/projects", json={"name": "W", "root": str(tmp_path / "work")})
+    d = client.get("/api/places").json()
+    names = [f["name"] for f in d["favorites"]]
+    assert names == ["Home", "Desktop", "Documents"]  # Downloads missing -> not listed
+    assert d["favorites"][1]["path"] == str(home / "Desktop")
+    assert {"name": "work", "path": str((tmp_path / "work").resolve()), "project": "W"} in d["projects"]
+    assert d["sep"] and isinstance(d["drives"], list)

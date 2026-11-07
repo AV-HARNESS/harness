@@ -72,13 +72,40 @@ def _proj(pid: str) -> dict:
         raise HTTPException(404, "no such project")
 
 
+@app.get("/api/places")
+def places():
+    """Sidebar shortcuts for the folder picker: standard folders, folders of your projects, drives (Windows)."""
+    home = Path.home()
+    fav, seen = [], set()
+
+    def add(name, icon, *cands):
+        for c in cands:
+            if c.is_dir() and str(c) not in seen:
+                seen.add(str(c))
+                fav.append({"name": name, "icon": icon, "path": str(c)})
+                return
+
+    add("Home", "home", home)
+    for n in ("Desktop", "Documents", "Downloads"):
+        add(n, n.lower(), home / n, *sorted(home.glob(f"OneDrive*/{n}")))
+    proj, seen_p = [], set()
+    for p in reversed(store.list_projects()):
+        r = p.get("root", "")
+        if r and r not in seen_p and Path(r).is_dir():
+            seen_p.add(r)
+            proj.append({"name": Path(r).name or r, "path": r, "project": p["name"]})
+    drives = [{"name": f"{c}:", "path": f"{c}:\\"} for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+              if Path(f"{c}:\\").exists()] if os.name == "nt" else []
+    return {"favorites": fav, "projects": proj, "drives": drives, "sep": os.sep}
+
+
 @app.get("/api/fs")
 def browse(path: str = "", files: bool = False, project: str = ""):
     """List folders (and optionally files) so the UI can link a folder. With `project`, stays inside its root."""
     root = Path(_proj(project)["root"]).resolve() if project else None
     if os.name == "nt" and path == "@drives" and not root:
         drives = [f"{c}:\\" for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" if Path(f"{c}:\\").exists()]
-        return {"path": "@drives", "parent": None, "entries": [{"name": d, "dir": True, "rel": d} for d in drives]}
+        return {"path": "@drives", "parent": None, "entries": [{"name": d, "dir": True, "rel": d, "mtime": 0} for d in drives]}
     p = Path(path).expanduser() if path else (root or Path.home())
     try:
         p = p.resolve()
@@ -99,7 +126,11 @@ def browse(path: str = "", files: bool = False, project: str = ""):
                 continue
             if isdir or (files and tools._guard(c) is None):
                 rel = c.relative_to(root).as_posix() if root else str(c)
-                entries.append({"name": c.name, "dir": isdir, "rel": rel})
+                try:
+                    mtime = int(c.stat().st_mtime)
+                except OSError:
+                    mtime = 0
+                entries.append({"name": c.name, "dir": isdir, "rel": rel, "mtime": mtime})
             if len(entries) >= 500:
                 break
     except PermissionError:

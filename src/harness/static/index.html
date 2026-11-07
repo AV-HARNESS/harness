@@ -3,84 +3,141 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Gemini harness</title>
+<title>Harness</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23c6613f'/%3E%3Cpath d='M9 22l7-12 7 12' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
-  :root { --bg:#faf9f5; --panel:#f0eee6; --ink:#1f1e1d; --mute:#73726c; --line:#e0ddd2; --accent:#c6613f; --code:#2b2a28; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#262624; --panel:#1f1e1d; --ink:#ececea; --mute:#9a9890; --line:#3a3936; --accent:#d97757; --code:#171716; } }
+  :root {
+    --bg:#faf9f5; --side:#f3f1ea; --panel:#efede5; --card:#fffefb; --ink:#1f1e1d; --mute:#7a7870; --line:#e4e1d6;
+    --hover:rgba(0,0,0,.045); --sel:rgba(198,97,63,.12); --accent:#c6613f; --accent-ink:#fff; --code:#2b2a28;
+    --folder:#5aa9e6; --shadow:0 8px 30px rgba(0,0,0,.14); --r:12px;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg:#262624; --side:#1f1e1d; --panel:#30302d; --card:#2b2a28; --ink:#ececea; --mute:#9a9890; --line:#3a3936;
+    --hover:rgba(255,255,255,.06); --sel:rgba(217,119,87,.2); --accent:#d97757; --code:#171716; --folder:#6bb6f0;
+    --shadow:0 8px 30px rgba(0,0,0,.5); } }
   * { box-sizing:border-box; }
-  body { margin:0; height:100vh; display:flex; background:var(--bg); color:var(--ink); font:15px/1.55 system-ui,sans-serif; }
-  aside { width:260px; background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; }
-  aside h1 { font-size:14px; margin:0; padding:14px 14px 8px; letter-spacing:.02em; }
-  button, select { font:inherit; color:inherit; background:transparent; border:1px solid var(--line); border-radius:8px; padding:6px 10px; cursor:pointer; }
-  button:hover { border-color:var(--mute); }
-  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
-  #new { margin:0 12px 8px; }
-  #list { flex:1; overflow:auto; padding:0 6px; }
-  .s { padding:8px 10px; border-radius:8px; cursor:pointer; display:flex; justify-content:space-between; gap:6px; }
-  .s:hover, .s.on { background:var(--bg); }
-  .s span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .s small { color:var(--mute); }
-  .s .x { opacity:0; border:none; padding:0 4px; color:var(--mute); }
-  .s:hover .x { opacity:1; }
-  #projbar { display:flex; gap:6px; padding:0 12px 6px; } #projbar select { flex:1; min-width:0; }
-  #root { padding:0 14px 10px; font-size:11px; color:var(--mute); word-break:break-all; }
-  #blocks { border-top:1px solid var(--line); padding:8px 6px; max-height:34%; overflow:auto; }
-  #blocks h2 { font-size:12px; margin:0 0 4px; padding:0 6px; color:var(--mute); display:flex; justify-content:space-between; align-items:center; font-weight:600; }
-  .b { padding:4px 10px; border-radius:8px; cursor:pointer; font-size:13px; display:flex; justify-content:space-between; }
-  .b:hover { background:var(--bg); } .b small { color:var(--mute); }
-  dialog { background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:12px; width:min(680px,92vw); padding:16px; }
-  dialog::backdrop { background:rgba(0,0,0,.4); }
-  dialog input, dialog textarea { width:100%; margin-bottom:8px; background:var(--panel); color:inherit; border:1px solid var(--line); border-radius:8px; padding:8px 10px; font:inherit; }
-  dialog textarea { height:340px; font:13px/1.5 ui-monospace,monospace; max-height:none; }
+  ::-webkit-scrollbar { width:10px; height:10px; } ::-webkit-scrollbar-thumb { background:var(--line); border-radius:10px; border:3px solid transparent; background-clip:content-box; }
+  ::-webkit-scrollbar-thumb:hover { background:var(--mute); background-clip:content-box; border:3px solid transparent; }
+  body { margin:0; height:100vh; display:flex; background:var(--bg); color:var(--ink); font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  button, select, input { font:inherit; color:inherit; }
+  button { background:transparent; border:1px solid var(--line); border-radius:9px; padding:6px 11px; cursor:pointer; transition:background .15s,border-color .15s; }
+  button:hover { background:var(--hover); border-color:var(--mute); }
+  button:disabled { opacity:.45; cursor:default; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  button.primary:hover { filter:brightness(1.06); }
+  select { background:transparent; border:1px solid var(--line); border-radius:9px; padding:6px 8px; cursor:pointer; }
+
+  /* ---------- sidebar ---------- */
+  aside { width:288px; background:var(--side); border-right:1px solid var(--line); display:flex; flex-direction:column; padding:18px 14px 12px; gap:14px; flex-shrink:0; }
+  .brand { display:flex; align-items:center; gap:10px; padding:0 6px; font-weight:650; font-size:16px; letter-spacing:-.01em; }
+  .logo { width:28px; height:28px; border-radius:8px; background:var(--accent); display:grid; place-items:center; }
+  .logo svg { width:16px; height:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:10px; display:flex; flex-direction:column; gap:8px; }
+  .card .lbl { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--mute); font-weight:600; padding:0 2px; }
+  #projbar { display:flex; gap:6px; } #projbar select { flex:1; min-width:0; font-weight:600; }
+  .ib { width:32px; height:32px; padding:0; display:grid; place-items:center; flex-shrink:0; border-radius:9px; }
+  #root { display:flex; gap:6px; align-items:center; font-size:12px; color:var(--mute); padding:2px; cursor:pointer; border-radius:6px; }
+  #root:hover { color:var(--ink); } #root span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #new { width:100%; padding:9px 12px; font-weight:600; border-radius:10px; }
+  .sec { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--mute); font-weight:600; padding:0 8px; display:flex; justify-content:space-between; align-items:center; }
+  #list { flex:1; overflow:auto; margin:-4px -6px 0; padding:0 6px; min-height:60px; }
+  .s { position:relative; padding:9px 12px; border-radius:10px; cursor:pointer; margin-bottom:2px; border:1px solid transparent; }
+  .s:hover { background:var(--hover); } .s.on { background:var(--card); border-color:var(--line); box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  .s.on::before { content:""; position:absolute; left:-1px; top:10px; bottom:10px; width:3px; border-radius:3px; background:var(--accent); }
+  .s .t { font-size:14px; font-weight:560; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right:20px; }
+  .s .m { font-size:12px; color:var(--mute); }
+  .s .x { position:absolute; right:6px; top:8px; opacity:0; border:none; padding:0 6px; color:var(--mute); line-height:1.4; }
+  .s:hover .x { opacity:1; } .s .x:hover { color:var(--accent); background:transparent; }
+  .empty { color:var(--mute); font-size:13px; padding:8px 10px; }
+  #blocks { border-top:1px solid var(--line); padding-top:12px; max-height:30%; overflow:auto; display:flex; flex-direction:column; gap:6px; }
+  #blocks .sec button { width:24px; height:24px; padding:0; line-height:1; border-radius:7px; }
+  .b { padding:6px 10px; border-radius:9px; cursor:pointer; font-size:13px; display:flex; justify-content:space-between; gap:8px; }
+  .b:hover { background:var(--hover); } .b span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .b small { color:var(--mute); }
+
+  /* ---------- dialogs ---------- */
+  dialog { background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:16px; width:min(680px,92vw); padding:20px; box-shadow:var(--shadow); }
+  dialog::backdrop { background:rgba(0,0,0,.42); backdrop-filter:blur(2px); }
+  dialog input:not([type=checkbox]), dialog textarea { width:100%; margin-bottom:10px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:9px 12px; outline:none; }
+  dialog input:focus, dialog textarea:focus { border-color:var(--mute); }
+  dialog textarea { height:340px; font:13px/1.5 ui-monospace,monospace; resize:vertical; }
   dialog .row { display:flex; gap:8px; justify-content:flex-end; }
+
+  /* ---------- folder picker (Finder-style) ---------- */
+  #fdlg { width:min(880px,95vw); height:min(560px,88vh); padding:0; overflow:hidden; }
+  #fdlg[open] { display:grid; grid-template-columns:200px 1fr; }
+  .pl { background:var(--side); border-right:1px solid var(--line); padding:14px 8px; overflow:auto; }
+  .pl h4 { margin:14px 10px 4px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--mute); font-weight:600; } .pl h4:first-child { margin-top:2px; }
+  .pi { display:flex; gap:9px; align-items:center; padding:6px 10px; border-radius:8px; cursor:pointer; font-size:13.5px; }
+  .pi:hover { background:var(--hover); } .pi.on { background:var(--sel); }
+  .pi svg { width:16px; height:16px; flex-shrink:0; color:var(--folder); } .pi span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pm { display:flex; flex-direction:column; min-width:0; min-height:0; }
+  .tb { display:flex; align-items:center; gap:6px; padding:10px 12px; border-bottom:1px solid var(--line); }
+  .tb .ib { width:30px; height:30px; } .tb input { margin:0 !important; width:170px !important; padding:5px 10px !important; }
+  .crumbs { flex:1; display:flex; align-items:center; gap:2px; overflow:hidden; font-size:13px; min-width:0; }
+  .crumbs a { padding:3px 6px; border-radius:6px; cursor:pointer; white-space:nowrap; color:var(--mute); }
+  .crumbs a:hover { background:var(--hover); color:var(--ink); } .crumbs a:last-child { color:var(--ink); font-weight:600; }
+  .crumbs i { color:var(--mute); font-style:normal; font-size:11px; }
+  .fh, .fr { display:grid; grid-template-columns:1fr 130px 90px; gap:8px; padding:0 14px; align-items:center; }
+  .fh { font-size:11px; color:var(--mute); text-transform:uppercase; letter-spacing:.05em; font-weight:600; padding-top:8px; padding-bottom:6px; border-bottom:1px solid var(--line); }
+  #flist { flex:1; overflow:auto; padding:4px 6px; }
+  .fr { height:32px; border-radius:7px; cursor:default; font-size:13.5px; user-select:none; }
+  .fr:nth-child(even) { background:var(--hover); } .fr:hover { background:var(--hover); } .fr.on { background:var(--sel) !important; }
+  .fr .n { display:flex; gap:9px; align-items:center; min-width:0; } .fr .n span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fr .n svg { width:18px; height:18px; flex-shrink:0; } .fr .d, .fr .k { color:var(--mute); font-size:12.5px; white-space:nowrap; }
+  .fr input[type=checkbox] { margin:0 4px 0 0; width:auto; accent-color:var(--accent); }
+  .fb { display:flex; align-items:center; gap:8px; padding:10px 14px; border-top:1px solid var(--line); }
+  .fb .sel { flex:1; color:var(--mute); font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* ---------- main ---------- */
   main { flex:1; display:flex; flex-direction:column; min-width:0; }
-  header { display:flex; align-items:center; gap:10px; padding:10px 18px; border-bottom:1px solid var(--line); }
-  header input { flex:1; background:transparent; border:none; color:inherit; font:600 15px system-ui; outline:none; }
-  #tok { color:var(--mute); font-size:12px; white-space:nowrap; }
-  #log { flex:1; overflow:auto; padding:20px 0; }
-  .col { max-width:780px; margin:0 auto; padding:0 18px; }
-  .msg { margin:0 0 18px; white-space:pre-wrap; word-wrap:break-word; }
-  .user { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 14px; }
-  .err { color:#c0392b; }
-  .sys { color:var(--mute); font-size:13px; }
-  details.tool { margin:0 0 12px; border:1px solid var(--line); border-radius:8px; font-size:13px; }
-  details.tool summary { padding:6px 10px; cursor:pointer; color:var(--mute); font-family:ui-monospace,monospace; }
-  details.tool pre { margin:0; padding:8px 10px; border-top:1px solid var(--line); overflow:auto; max-height:320px; font-size:12px; white-space:pre-wrap; }
-  pre.code { background:var(--code); color:#eee; border-radius:8px; padding:10px 12px; overflow:auto; }
-  code { background:var(--panel); padding:1px 5px; border-radius:4px; font-size:.92em; }
-  footer { border-top:1px solid var(--line); padding:12px 0 16px; }
-  .composer { background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:10px 12px 8px; }
-  .composer:focus-within { border-color:var(--mute); }
-  .composer textarea { width:100%; resize:none; max-height:200px; background:transparent; color:inherit; border:none; padding:4px 2px 8px; font:inherit; outline:none; }
-  .crow { display:flex; align-items:center; gap:6px; }
-  .crow .sp { flex:1; }
-  .ic { width:34px; height:34px; padding:0; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:17px; flex-shrink:0; }
+  header { display:flex; align-items:center; gap:10px; padding:12px 22px; border-bottom:1px solid var(--line); }
+  header input { flex:1; background:transparent; border:none; color:inherit; font-weight:650; font-size:16px; outline:none; letter-spacing:-.01em; }
+  #tok { color:var(--mute); font-size:12px; white-space:nowrap; background:var(--panel); padding:3px 9px; border-radius:20px; } #tok:empty { display:none; }
+  #log { flex:1; overflow:auto; padding:24px 0; }
+  .col { max-width:780px; margin:0 auto; padding:0 22px; }
+  .msg { margin:0 0 20px; white-space:pre-wrap; word-wrap:break-word; }
+  .user { background:var(--panel); border-radius:16px; padding:11px 16px; }
+  .err { color:#c0392b; } .sys { color:var(--mute); font-size:13px; }
+  details.tool { margin:0 0 12px; border:1px solid var(--line); border-radius:10px; font-size:13px; background:var(--card); }
+  details.tool summary { padding:7px 12px; cursor:pointer; color:var(--mute); font-family:ui-monospace,monospace; }
+  details.tool pre { margin:0; padding:10px 12px; border-top:1px solid var(--line); overflow:auto; max-height:320px; font-size:12px; white-space:pre-wrap; }
+  pre.code { background:var(--code); color:#eee; border-radius:10px; padding:12px 14px; overflow:auto; }
+  code { background:var(--panel); padding:1px 5px; border-radius:5px; font-size:.92em; }
+  footer { padding:6px 0 18px; }
+  #folder { color:var(--mute); font-size:12px; padding:0 6px 8px; display:flex; gap:6px; align-items:center; }
+  #folder button { padding:1px 9px; font-size:12px; border-radius:7px; }
+  .composer { background:var(--card); border:1px solid var(--line); border-radius:20px; padding:12px 14px 10px; box-shadow:0 2px 12px rgba(0,0,0,.05); transition:border-color .15s, box-shadow .15s; }
+  .composer:focus-within { border-color:var(--mute); box-shadow:0 4px 20px rgba(0,0,0,.08); }
+  .composer textarea { width:100%; resize:none; max-height:200px; background:transparent; color:inherit; border:none; padding:2px 2px 10px; font:inherit; outline:none; }
+  .crow { display:flex; align-items:center; gap:6px; } .crow .sp { flex:1; }
+  .ic { width:34px; height:34px; padding:0; border-radius:50%; display:grid; place-items:center; font-size:17px; flex-shrink:0; }
   #model { border:none; color:var(--mute); font-size:13px; max-width:230px; padding:6px 4px; }
-  #mic.listening, #voice.on { background:var(--accent); border-color:var(--accent); color:#fff; }
-  #mic.listening { animation:pulse 1s infinite; }
+  #mic.listening, #voice.on { background:var(--accent); border-color:var(--accent); color:#fff; } #mic.listening { animation:pulse 1s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
-  .menu { position:absolute; bottom:46px; left:0; background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:6px; min-width:260px; box-shadow:0 6px 24px rgba(0,0,0,.18); z-index:5; }
-  .menu button { display:block; width:100%; text-align:left; border:none; padding:8px 10px; }
-  .menu button:hover { background:var(--panel); }
-  .menu small { display:block; color:var(--mute); padding:2px 10px 4px; }
-  .chips { display:flex; flex-wrap:wrap; gap:6px; padding-bottom:6px; }
-  .chip { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:2px 8px; font-size:12px; display:flex; gap:6px; align-items:center; }
+  .menu { position:absolute; bottom:52px; left:0; background:var(--bg); border:1px solid var(--line); border-radius:14px; padding:6px; min-width:270px; box-shadow:var(--shadow); z-index:5; }
+  .menu button { display:block; width:100%; text-align:left; border:none; padding:9px 11px; border-radius:9px; }
+  .menu small { display:block; color:var(--mute); padding:4px 11px 4px; font-size:12px; }
+  .dict { display:none; flex:1; align-items:center; gap:10px; }
+  .dict canvas { flex:1; height:34px; min-width:0; }
+  .composer.dictating .crow > :not(.dict) { display:none !important; } .composer.dictating .dict { display:flex; }
+  #dx { color:var(--mute); } #dx:hover { color:var(--accent); border-color:var(--accent); }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; padding-bottom:8px; }
+  .chip { background:var(--panel); border-radius:8px; padding:3px 9px; font-size:12px; display:flex; gap:7px; align-items:center; }
   .chip b { cursor:pointer; color:var(--mute); font-weight:400; }
-  #folder { color:var(--mute); font-size:12px; padding:0 4px 6px; display:flex; gap:6px; align-items:center; }
-  #fdlg .fl { height:320px; overflow:auto; border:1px solid var(--line); border-radius:8px; margin-bottom:8px; }
-  #fdlg .fi { padding:6px 10px; cursor:pointer; display:flex; gap:8px; align-items:center; }
-  #fdlg .fi:hover { background:var(--panel); }
-  #fdlg .bar { display:flex; gap:6px; margin-bottom:8px; } #fdlg .bar input { margin:0; }
 </style>
 </head>
 <body>
 <aside>
-  <h1>Gemini harness</h1>
-  <div id="projbar"><select id="proj"></select><button id="pnew" title="New project">+</button><button id="pedit" title="Project settings">&#9881;</button></div>
-  <div id="root"></div>
+  <div class="brand"><span class="logo"><svg viewBox="0 0 32 32"><path d="M9 22l7-12 7 12" stroke="#fff" stroke-width="3.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Harness</div>
+  <div class="card">
+    <div class="lbl">Project</div>
+    <div id="projbar"><select id="proj"></select><button id="pnew" class="ib" title="New project">+</button><button id="pedit" class="ib" title="Change project folder">&#9881;</button></div>
+    <div id="root" title="Change project folder">&#128193;<span id="rootp"></span></div>
+  </div>
   <button id="new" class="primary">+ New session</button>
+  <div class="sec">Sessions</div>
   <div id="list"></div>
-  <div id="blocks"><h2>Context blocks <button id="bnew" title="New block">+</button></h2><div id="blist"></div></div>
+  <div id="blocks"><div class="sec">Context blocks <button id="bnew" title="New block">+</button></div><div id="blist"></div></div>
 </aside>
 <dialog id="bdlg">
   <input id="bname" placeholder="block name (letters, digits, - _)">
@@ -95,8 +152,8 @@
   </header>
   <div id="log"><div class="col" id="msgs"></div></div>
   <footer><div class="col" style="position:relative">
-    <div id="folder"><span>&#128193;</span><span id="froot"></span><button id="fchange" style="padding:1px 8px;font-size:12px">Change</button></div>
-    <div class="composer">
+    <div id="folder"><span>&#128193;</span><span id="froot"></span><button id="fchange">Change</button></div>
+    <div class="composer" id="composer">
       <div class="chips" id="chips" hidden></div>
       <textarea id="in" rows="1" placeholder="Message (Enter to send, Shift+Enter for newline)"></textarea>
       <div class="crow">
@@ -113,14 +170,27 @@
         <button id="voice" class="ic" title="Voice mode: talk, it answers out loud">&#127911;</button>
         <button id="mic" class="ic" title="Dictate (click to start/stop)">&#127908;</button>
         <button id="send" class="primary ic" title="Send">&#8593;</button>
+        <div class="dict" id="dict">
+          <button id="dx" class="ic" title="Cancel (discard what I heard)">&#10005;</button>
+          <canvas id="wave"></canvas>
+          <button id="dok" class="primary ic" title="Done (keep the text)">&#10003;</button>
+        </div>
       </div>
     </div>
   </div></footer>
 </main>
 <dialog id="fdlg">
-  <div class="bar"><button id="fup">&#8593; Up</button><input id="fpath" placeholder="folder path"><button id="fgo">Go</button></div>
-  <div class="fl" id="flist"></div>
-  <div class="row"><button id="fcancel">Cancel</button><button id="fok" class="primary">Use this folder</button></div>
+  <div class="pl" id="places"></div>
+  <div class="pm">
+    <div class="tb">
+      <button id="fback" class="ib" title="Back">&#8249;</button><button id="ffwd" class="ib" title="Forward">&#8250;</button><button id="fup" class="ib" title="Enclosing folder">&#8593;</button>
+      <div class="crumbs" id="crumbs"></div>
+      <input id="ffilter" placeholder="Search this folder">
+    </div>
+    <div class="fh"><span>Name</span><span>Date modified</span><span>Kind</span></div>
+    <div id="flist"></div>
+    <div class="fb"><span class="sel" id="fsel"></span><button id="fcancel">Cancel</button><button id="fok" class="primary">Choose</button></div>
+  </div>
 </dialog>
 <dialog id="idlg">
   <input id="instr" placeholder="Optional standing instructions for this session">
@@ -132,10 +202,16 @@ let cur = null, cfg = {}, running = false, proj = null, projects = [];
 
 const api = async (m, url, body) => {
   const r = await fetch(url, {method:m, headers:{'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : undefined});
-  if (!r.ok) throw new Error((await r.text()).slice(0, 300));
+  if (!r.ok) { let t = await r.text(); try { t = JSON.parse(t).detail || t; } catch (e) {} throw new Error(String(t).slice(0, 300)); }
   return r.json();
 };
 const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function ago(ts) {
+  const s = Math.max(0, Date.now() / 1000 - (ts || 0));
+  if (s < 90) return 'just now'; if (s < 3600) return Math.round(s / 60) + 'm ago';
+  if (s < 86400) return Math.round(s / 3600) + 'h ago'; if (s < 604800) return Math.round(s / 86400) + 'd ago';
+  return new Date(ts * 1000).toLocaleDateString(undefined, {month:'short', day:'numeric'});
+}
 function md(t) {
   return esc(t)
     .replace(/```(?:\w+)?\n([\s\S]*?)```/g, (_, c) => `<pre class="code">${c}</pre>`)
@@ -171,9 +247,10 @@ function setTok(n) { $('tok').textContent = n ? `${(n/1000).toFixed(1)}k ctx` : 
 async function loadList() {
   const ss = await api('GET', '/api/sessions?project=' + proj.id);
   $('list').innerHTML = '';
+  if (!ss.length) $('list').innerHTML = '<div class="empty">No sessions yet. Start one with the button above.</div>';
   for (const s of ss) {
     const d = document.createElement('div'); d.className = 's' + (cur && cur.id === s.id ? ' on' : '');
-    d.innerHTML = `<span>${esc(s.title)}</span><small>${s.model}</small><button class="x" title="Delete">x</button>`;
+    d.innerHTML = `<div class="t">${esc(s.title)}</div><div class="m">${esc(s.model || '')} &middot; ${ago(s.updated)}</div><button class="x" title="Delete">&times;</button>`;
     d.onclick = () => open(s.id);
     d.querySelector('.x').onclick = async e => {
       e.stopPropagation(); if (!confirm('Delete this session?')) return;
@@ -244,7 +321,7 @@ async function loadBlocks() {
     d.innerHTML = `<span>${esc(b.name)}</span><small>${b.content.length}</small>`;
     d.onclick = () => editBlock(b.name, b.content); $('blist').appendChild(d);
   }
-  if (!bs.length) $('blist').innerHTML = '<div class="sys" style="padding:4px 10px">None yet. The agent can create them, or click +</div>';
+  if (!bs.length) $('blist').innerHTML = '<div class="empty">None yet. The agent can create them, or click +</div>';
 }
 function editBlock(name, content) {
   $('bname').value = name || ''; $('bname').disabled = !!name; $('btext').value = content || ''; $('bdlg').showModal();
@@ -257,7 +334,8 @@ async function loadProjects(select) {
 async function switchProject(id) {
   proj = projects.find(p => p.id === id) || projects[0]; $('proj').value = proj.id;
   try { localStorage.setItem('proj', proj.id); } catch (e) {}
-  $('froot').textContent = proj.root; $('root').textContent = proj.root; $('model').value = proj.model || cfg.default_model;
+  $('froot').textContent = proj.root; $('rootp').textContent = proj.root; $('root').title = proj.root + ' (click to change)';
+  $('model').value = proj.model || cfg.default_model;
   cur = null; files = []; drawChips(); $('msgs').innerHTML = ''; setTok(0); $('title').value = ''; $('instr').value = '';
   await loadBlocks();
   const ss = await api('GET', '/api/sessions?project=' + proj.id);
@@ -269,7 +347,7 @@ $('pnew').onclick = async () => {
   const root = await pickFolder('link', proj ? proj.root : ''); if (!root) return;
   try { const p = await api('POST', '/api/projects', {name, root}); await loadProjects(p.id); } catch (e) { alert(e.message); }
 };
-$('pedit').onclick = $('fchange').onclick = $('m-folder').onclick = async () => {
+$('pedit').onclick = $('fchange').onclick = $('m-folder').onclick = $('root').onclick = async () => {
   $('menu').hidden = true;
   const root = await pickFolder('link', proj.root);
   if (root && root !== proj.root) {
@@ -285,38 +363,96 @@ $('bdel').onclick = async () => {
   const n = $('bname').value.trim(); if (!n || !confirm('Delete block ' + n + '?')) return;
   await api('DELETE', `/api/projects/${proj.id}/blocks/${encodeURIComponent(n)}`); $('bdlg').close(); loadBlocks();
 };
-// ---- folder picker (server-side listing; browsers cannot reveal absolute paths) ----
-let fmode = 'link', fpath = '', fsel = new Set(), fres = null;
-function pickFolder(mode, start) {
-  fmode = mode; fsel = new Set(); $('fok').textContent = mode === 'link' ? 'Use this folder' : 'Attach selected';
+
+// ---- folder picker (Finder-style: places on the left, breadcrumb + list on the right) ----
+// The server lists folders because a browser cannot reveal absolute paths of local folders.
+const ICON = {
+  folder: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4h3.6c.6 0 1.2.3 1.6.8L12 6.5h6.5A2.5 2.5 0 0 1 21 9v8.5a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Z"/></svg>',
+  file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M7 3.5h7l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 19V5A1.5 1.5 0 0 1 7 3.5Z"/><path d="M14 3.5V8h4"/></svg>',
+  home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 11l8-7 8 7v8.5a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1V11Z"/></svg>',
+  drive: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="13" width="18" height="6" rx="2"/><path d="M5 13l2-7h10l2 7"/><circle cx="7" cy="16" r=".8" fill="currentColor"/></svg>',
+};
+const pk = {mode:'link', path:'', parent:'', sel:null, files:new Set(), back:[], fwd:[], entries:[], res:null, sep:'/', root:''};
+const place = (icon, name, path, cls = '') => `<div class="pi ${cls}" data-p="${esc(path).replace(/"/g, '&quot;')}">${ICON[icon] || ICON.folder}<span>${esc(name)}</span></div>`;
+async function pickFolder(mode, start) {
+  Object.assign(pk, {mode, sel:null, files:new Set(), back:[], fwd:[], path:'', root: proj ? proj.root : ''});
+  $('fok').textContent = mode === 'link' ? 'Choose' : 'Attach'; $('ffilter').value = '';
+  let h = '';
+  if (mode === 'link') {
+    try {
+      const pl = await api('GET', '/api/places'); pk.sep = pl.sep || '/';
+      h += '<h4>Favorites</h4>' + pl.favorites.map(f => place(f.icon === 'home' ? 'home' : 'folder', f.name, f.path)).join('');
+      if (pl.projects.length) h += '<h4>Project folders</h4>' + pl.projects.map(f => place('folder', f.name, f.path)).join('');
+      if (pl.drives.length) h += '<h4>Drives</h4>' + pl.drives.map(f => place('drive', f.name, f.path)).join('');
+    } catch (e) {}
+  } else h = '<h4>Project folder</h4>' + place('folder', proj.root.split(/[\\/]/).filter(Boolean).pop() || proj.root, proj.root);
+  $('places').innerHTML = h;
+  $('places').querySelectorAll('.pi').forEach(el => el.onclick = () => go(el.dataset.p));
   return new Promise(async resolve => {
-    fres = resolve; $('fdlg').showModal();
-    try { await browse(start); } catch (e) { await browse('').catch(() => {}); }
+    pk.res = resolve; $('fdlg').showModal();
+    try { await go(start, false); } catch (e) { await go('', false).catch(() => {}); }
   });
 }
-async function browse(path) {
-  const q = new URLSearchParams({path: path || '', files: fmode === 'attach' ? '1' : '0'});
-  if (fmode === 'attach') q.set('project', proj.id);
-  const r = await api('GET', '/api/fs?' + q);
-  fpath = r.path; $('fpath').value = r.path; $('fup').disabled = !r.parent; $('fup').dataset.p = r.parent || '';
-  $('flist').innerHTML = '';
-  for (const e of r.entries) {
-    const d = document.createElement('div'); d.className = 'fi';
-    if (e.dir) { d.innerHTML = `&#128193; ${esc(e.name)}`; d.onclick = () => browse(r.path === '@drives' ? e.name : r.path.replace(/[\\/]+$/, '') + (r.path.includes('\\') ? '\\' : '/') + e.name).catch(x => alert(x.message)); }
-    else { d.innerHTML = `<input type="checkbox" style="margin:0;width:auto"> ${esc(e.name)}`;
-      const cb = d.querySelector('input'); cb.checked = fsel.has(e.rel);
-      d.onclick = ev => { if (ev.target !== cb) cb.checked = !cb.checked; cb.checked ? fsel.add(e.rel) : fsel.delete(e.rel); }; }
-    $('flist').appendChild(d);
-  }
-  if (!r.entries.length) $('flist').innerHTML = '<div class="sys" style="padding:10px">Nothing here.</div>';
+async function go(path, push = true) {
+  const q = new URLSearchParams({path: path || '', files: pk.mode === 'attach' ? '1' : '0'});
+  if (pk.mode === 'attach') q.set('project', proj.id);
+  let r;
+  try { r = await api('GET', '/api/fs?' + q); } catch (e) { alert(e.message); return; }
+  if (push && pk.path && pk.path !== r.path) { pk.back.push(pk.path); pk.fwd = []; }
+  Object.assign(pk, {path: r.path, parent: r.parent, entries: r.entries, sel: null});
+  if (r.path.includes('\\')) pk.sep = '\\';
+  drawFolder();
 }
-$('fup').onclick = () => browse($('fup').dataset.p).catch(x => alert(x.message));
-$('fgo').onclick = () => browse($('fpath').value).catch(x => alert(x.message));
-$('fpath').onkeydown = e => { if (e.key === 'Enter') $('fgo').click(); };
-const fdone = v => { $('fdlg').close(); if (fres) { fres(v); fres = null; } };
+function crumbs() {
+  const p = pk.path, win = p.includes('\\') || /^[A-Za-z]:/.test(p), sep = win ? '\\' : '/';
+  const parts = p.split(/[\\/]/).filter(Boolean); let acc = win ? '' : '/', out = [];
+  if (!win) out.push(['/', '/']);
+  parts.forEach((x, i) => { acc = win ? (i === 0 ? x + '\\' : acc + (acc.endsWith('\\') ? '' : '\\') + x) : acc + (acc.endsWith('/') ? '' : '/') + x; out.push([x, acc]); });
+  if (win && pk.mode === 'link') out.unshift(['This PC', '@drives']);
+  return out;
+}
+function drawFolder() {
+  $('crumbs').innerHTML = pk.path === '@drives' ? '<a>This PC</a>' :
+    crumbs().map((c, i, a) => `<a data-p="${esc(c[1]).replace(/"/g, '&quot;')}">${esc(c[0])}</a>${i < a.length - 1 ? '<i>&#8250;</i>' : ''}`).join('');
+  $('crumbs').querySelectorAll('a[data-p]').forEach(el => el.onclick = () => go(el.dataset.p));
+  $('crumbs').lastElementChild && ($('crumbs').scrollLeft = 1e6);
+  $('fback').disabled = !pk.back.length; $('ffwd').disabled = !pk.fwd.length; $('fup').disabled = !pk.parent;
+  $('places').querySelectorAll('.pi').forEach(el => el.classList.toggle('on', el.dataset.p === pk.path));
+  const f = $('ffilter').value.toLowerCase(), list = $('flist'); list.innerHTML = '';
+  const shown = pk.entries.filter(e => !f || e.name.toLowerCase().includes(f));
+  for (const e of shown) {
+    const d = document.createElement('div'); d.className = 'fr';
+    const chk = pk.mode === 'attach' && !e.dir ? `<input type="checkbox" ${pk.files.has(e.rel) ? 'checked' : ''}>` : '';
+    const kind = e.dir ? 'Folder' : ((e.name.split('.').pop() || '').toUpperCase() + ' file').replace(/^ file$/, 'File');
+    const when = e.mtime ? new Date(e.mtime * 1000).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'}) : '';
+    d.innerHTML = `<span class="n">${chk}<span style="display:contents;color:${e.dir ? 'var(--folder)' : 'var(--mute)'}">${e.dir ? ICON.folder : ICON.file}</span><span style="color:var(--ink)">${esc(e.name)}</span></span><span class="d">${when}</span><span class="k">${kind}</span>`;
+    const full = () => pk.path === '@drives' ? e.name : (pk.path.replace(/[\\/]+$/, '') + (pk.path.includes('\\') ? '\\' : '/') + e.name);
+    d.onclick = () => {
+      if (e.dir) { pk.sel = pk.sel === full() ? null : full(); list.querySelectorAll('.fr').forEach(x => x.classList.remove('on')); if (pk.sel) d.classList.add('on'); }
+      else { pk.files.has(e.rel) ? pk.files.delete(e.rel) : pk.files.add(e.rel); const c = d.querySelector('input'); if (c) c.checked = pk.files.has(e.rel); }
+      status();
+    };
+    if (e.dir) d.ondblclick = () => go(full());
+    list.appendChild(d);
+  }
+  if (!shown.length) list.innerHTML = '<div class="empty">' + (f ? 'No matches.' : 'This folder is empty.') + '</div>';
+  status();
+}
+function status() {
+  const name = p => p.split(/[\\/]/).filter(Boolean).pop() || p;
+  if (pk.mode === 'link') {
+    const t = pk.sel || pk.path; $('fok').disabled = pk.path === '@drives' && !pk.sel;
+    $('fsel').textContent = $('fok').disabled ? 'Open a drive first' : 'Will link: ' + t; $('fok').textContent = 'Choose "' + name(t) + '"';
+  } else { $('fsel').textContent = pk.files.size ? pk.files.size + ' file(s) selected' : 'Tick the files to attach'; $('fok').disabled = !pk.files.size; }
+}
+$('fback').onclick = () => { if (pk.back.length) { pk.fwd.push(pk.path); go(pk.back.pop(), false); } };
+$('ffwd').onclick = () => { if (pk.fwd.length) { pk.back.push(pk.path); go(pk.fwd.pop(), false); } };
+$('fup').onclick = () => go(pk.parent);
+$('ffilter').oninput = drawFolder;
+const fdone = v => { $('fdlg').close(); if (pk.res) { pk.res(v); pk.res = null; } };
 $('fcancel').onclick = () => fdone(null);
 $('fdlg').addEventListener('cancel', () => fdone(null));
-$('fok').onclick = () => fdone(fmode === 'link' ? (fpath === '@drives' ? null : fpath) : [...fsel]);
+$('fok').onclick = () => fdone(pk.mode === 'link' ? (pk.sel || pk.path) : [...pk.files]);
 function drawChips() {
   $('chips').hidden = !files.length; $('chips').innerHTML = '';
   files.forEach((f, i) => { const c = document.createElement('span'); c.className = 'chip'; c.innerHTML = `${esc(f)} <b>&times;</b>`;
@@ -347,19 +483,54 @@ $('m-lang').onclick = e => {
 };
 let rec = null, listening = false, base = '';
 function fit() { $('in').style.height = 'auto'; $('in').style.height = $('in').scrollHeight + 'px'; }
+
+// live waveform of the microphone level (separate audio stream; falls back to a gentle animation)
+let wv = {raf: 0, stream: null, ctx: null};
+async function startWave() {
+  const cv = $('wave'), g = cv.getContext('2d'); let an = null, data = null;
+  try {
+    wv.stream = await navigator.mediaDevices.getUserMedia({audio: true});
+    wv.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    an = wv.ctx.createAnalyser(); an.fftSize = 128; wv.ctx.createMediaStreamSource(wv.stream).connect(an); data = new Uint8Array(an.frequencyBinCount);
+  } catch (e) { an = null; }
+  const col = () => getComputedStyle(document.documentElement).getPropertyValue('--mute').trim() || '#888';
+  const draw = t => {
+    const w = cv.width = cv.clientWidth * devicePixelRatio, h = cv.height = cv.clientHeight * devicePixelRatio;
+    g.clearRect(0, 0, w, h); g.fillStyle = col();
+    const n = Math.floor(cv.clientWidth / 5), bw = 2 * devicePixelRatio, gap = w / n;
+    if (an) an.getByteFrequencyData(data);
+    for (let i = 0; i < n; i++) {
+      const v = an ? data[Math.floor(i / n * data.length * .6)] / 255 : (Math.sin(t / 260 + i / 3) + 1) / 5;
+      const bh = Math.max(bw, v * h * .95); g.fillRect(i * gap, (h - bh) / 2, bw, bh);
+    }
+    wv.raf = requestAnimationFrame(draw);
+  };
+  wv.raf = requestAnimationFrame(draw);
+}
+function stopWave() {
+  cancelAnimationFrame(wv.raf); if (wv.stream) wv.stream.getTracks().forEach(t => t.stop());
+  if (wv.ctx) wv.ctx.close().catch(() => {}); wv = {raf: 0, stream: null, ctx: null};
+}
 function startListening() {
   if (!SR || listening || running) return;
   rec = new SR(); rec.lang = lang; rec.continuous = !voiceMode; rec.interimResults = true;
-  base = $('in').value ? $('in').value.replace(/\s*$/, ' ') : '';
+  base = $('in').value ? $('in').value.replace(/\s*$/, ' ') : ''; rec.orig = $('in').value;
   rec.onresult = e => {
     $('in').value = base + Array.from(e.results).map(r => r[0].transcript).join('').trim(); fit();
     if (voiceMode && e.results[e.results.length - 1].isFinal) { rec.stop(); send(); }
   };
   rec.onerror = e => { if (e.error === 'not-allowed') alert('Microphone access was blocked for this page.'); stopUi(); };
   rec.onend = stopUi;
-  listening = true; $('mic').classList.add('listening'); rec.start();
+  listening = true; $('mic').classList.add('listening'); $('composer').classList.add('dictating'); startWave(); rec.start();
 }
-function stopUi() { listening = false; $('mic').classList.remove('listening'); }
+function stopUi() { listening = false; $('mic').classList.remove('listening'); $('composer').classList.remove('dictating'); stopWave(); }
+// check mark: keep the text (voice mode: send it now). X: discard what was heard (voice mode: leave voice mode).
+$('dok').onclick = () => { if (!rec) return; rec.stop(); if (voiceMode) setTimeout(send, 250); else $('in').focus(); };
+$('dx').onclick = () => {
+  if (!rec) return; const orig = rec.orig; rec.onresult = null; rec.abort(); stopUi();
+  $('in').value = orig; fit();
+  if (voiceMode) { voiceMode = false; $('voice').classList.remove('on'); if ('speechSynthesis' in window) speechSynthesis.cancel(); }
+};
 function speak(t) {
   if (!('speechSynthesis' in window) || !t.trim()) { if (voiceMode) startListening(); return; }
   const u = new SpeechSynthesisUtterance(t.replace(/```[\s\S]*?```/g, ' code block. ').replace(/[`*#]/g, ''));
