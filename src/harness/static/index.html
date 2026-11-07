@@ -109,9 +109,17 @@
   .msg { margin:0 0 20px; white-space:pre-wrap; word-wrap:break-word; }
   .user { background:var(--panel); border-radius:16px; padding:11px 16px; }
   .err { color:#c0392b; } .sys { color:var(--mute); font-size:13px; }
-  details.tool { margin:0 0 12px; border:1px solid var(--line); border-radius:10px; font-size:13px; background:var(--card); }
-  details.tool summary { padding:7px 12px; cursor:pointer; color:var(--mute); font-family:ui-monospace,monospace; }
-  details.tool pre { margin:0; padding:10px 12px; border-top:1px solid var(--line); overflow:auto; max-height:320px; font-size:12px; white-space:pre-wrap; }
+  /* tool steps: collapsed into one line, like Claude */
+  .steps { margin:0 0 16px; font-size:13px; }
+  .steps > summary { list-style:none; cursor:pointer; display:inline-flex; align-items:center; gap:7px; padding:4px 11px 4px 9px; border-radius:20px; color:var(--mute); background:var(--hover); max-width:100%; }
+  .steps > summary::-webkit-details-marker { display:none; } .steps > summary:hover { color:var(--ink); }
+  .steps > summary .i { width:13px; height:13px; transition:transform .15s; } .steps[open] > summary .i { transform:rotate(90deg); }
+  .steps > summary .lbl { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .steps.live > summary::after { content:''; width:6px; height:6px; border-radius:50%; background:var(--accent); animation:pulse 1s infinite; flex-shrink:0; }
+  .steps .body { margin:8px 0 0 10px; padding-left:14px; border-left:2px solid var(--line); max-height:240px; overflow:auto; }
+  .step summary { font:12px ui-monospace,monospace; color:var(--mute); padding:3px 0; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; list-style:none; }
+  .step summary::-webkit-details-marker { display:none; } .step summary:hover { color:var(--ink); } .step.bad summary { color:#c0392b; }
+  .step pre { margin:2px 0 8px; padding:8px 10px; background:var(--panel); border-radius:8px; overflow:auto; max-height:160px; font-size:11.5px; white-space:pre-wrap; color:var(--ink); }
   pre.code { background:var(--code); color:#eee; border-radius:10px; padding:12px 14px; overflow:auto; }
   code { background:var(--panel); padding:1px 5px; border-radius:5px; font-size:.92em; }
   footer { padding:6px 0 18px; }
@@ -250,22 +258,45 @@ function md(t) {
     .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
 }
 function add(cls, html) {
+  if (typeof endSteps === 'function') endSteps();
   const d = document.createElement('div'); d.className = 'msg ' + cls; d.innerHTML = html;
   $('msgs').appendChild(d); $('log').scrollTop = 1e9; return d;
 }
 let lastTool = null, spoken = '', files = [], voiceMode = false;
 const SVG = n => `<svg class="i"><use href="#i-${n}"/></svg>`;
 const setSend = on => { $('send').innerHTML = SVG(on ? 'stop' : 'up'); $('send').title = on ? 'Stop' : 'Send'; };
+let grp = null, grpCount = {}, pend = [];
+const KIND = {bash: ['ran', 'command', 'commands'], read_file: ['read', 'file', 'files'], write_file: ['wrote', 'file', 'files'],
+  edit_file: ['edited', 'file', 'files'], list_dir: ['listed', 'folder', 'folders'], web_fetch: ['fetched', 'page', 'pages'],
+  web_search: ['searched the web', 'time', 'times'], read_block: ['read', 'note', 'notes'], list_blocks: ['read', 'note', 'notes'],
+  write_block: ['updated', 'note', 'notes']};
+function grpLabel() {
+  const parts = [];
+  for (const [k, n] of Object.entries(grpCount)) {
+    const [verb, one, many] = KIND[k] || ['used ' + k, 'time', 'times'];
+    parts.push(k === 'web_search' ? (n === 1 ? 'searched the web' : `searched the web ${n} times`) : `${verb} ${n} ${n === 1 ? one : many}`);
+  }
+  const t = parts.join(', ') || 'working'; return t[0].toUpperCase() + t.slice(1);
+}
 function toolCall(name, args) {
-  const d = document.createElement('details'); d.className = 'tool';
-  const a = Object.entries(args || {}).map(([k, v]) => `${k}=${JSON.stringify(String(v).slice(0, 60))}`).join(', ');
-  d.innerHTML = `<summary>${esc(name)}(${esc(a)})</summary><pre>${esc(JSON.stringify(args, null, 2))}</pre>`;
-  $('msgs').appendChild(d); lastTool = d; $('log').scrollTop = 1e9;
+  if (!grp) {
+    grp = document.createElement('details'); grp.className = 'steps live'; grpCount = {};
+    grp.innerHTML = `<summary>${SVG('right')}<span class="lbl"></span></summary><div class="body"></div>`;
+    $('msgs').appendChild(grp);
+  }
+  grpCount[name] = (grpCount[name] || 0) + 1; grp.querySelector('.lbl').textContent = grpLabel();
+  const a = Object.values(args || {}).map(v => String(v).replace(/\s+/g, ' ').slice(0, 70))[0] || '';
+  const d = document.createElement('details'); d.className = 'step';
+  d.innerHTML = `<summary>${esc(name)}  ${esc(a)}</summary><pre>${esc(JSON.stringify(args, null, 2))}</pre>`;
+  grp.querySelector('.body').appendChild(d); lastTool = d; pend.push(d);
+  const body = grp.querySelector('.body'); body.scrollTop = 1e9; $('log').scrollTop = 1e9;
 }
 function toolResult(out) {
-  if (!lastTool) return;
-  const p = document.createElement('pre'); p.textContent = out; lastTool.appendChild(p);
+  const d = pend.shift() || lastTool; if (!d) return;   // results arrive in the same order as the calls
+  const p = document.createElement('pre'); p.textContent = out; d.appendChild(p);
+  if (String(out).startsWith('ERROR')) d.classList.add('bad');
 }
+function endSteps() { if (grp) grp.classList.remove('live'); grp = null; pend = []; }
 function render(m) {
   for (const p of m.parts) {
     if (p.thought) continue;
@@ -295,8 +326,8 @@ async function loadList() {
 }
 async function open(id) {
   cur = await api('GET', '/api/sessions/' + id);
-  $('msgs').innerHTML = ''; lastTool = null;
-  cur.messages.forEach(render);
+  $('msgs').innerHTML = ''; lastTool = null; grp = null;
+  cur.messages.forEach(render); endSteps();
   $('title').value = cur.title; $('model').value = cur.model; $('instr').value = cur.instructions || '';
   setTok(cur.prompt_tokens); loadList();
 }
@@ -329,7 +360,7 @@ async function send() {
       else if (e.type === 'error') add('err', esc(e.error));
     }
   }
-  running = false; setSend(false);
+  running = false; setSend(false); endSteps();
   if (voiceMode) speak(spoken); spoken = '';
   cur = await api('GET', '/api/sessions/' + cur.id); $('title').value = cur.title; loadList();
 }
