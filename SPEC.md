@@ -91,6 +91,7 @@ Change behaviour => change this file and the test in the same commit.
 
 ## 8. CLI and verify (`cli.py`, `verify.py`)
 - **R-CLI-01** `python -m harness redact "<text>"` prints the masked text and a report.
+- **R-CLI-03** `python -m harness` run inside a folder opens the project whose root contains that folder (deepest match), or creates one for it; `--project` / `--resume` override this.
 - **R-CLI-02** `python -m harness projects` lists projects.
 - **R-VER-01** `verify` exits 0 only when every check passes and prints an actionable hint for known failures.
 - **R-VER-02** [manual] `verify` against real Vertex / gateway / OpenAI / Anthropic.

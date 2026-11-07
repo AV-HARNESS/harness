@@ -71,3 +71,21 @@ def test_verify_unknown_alias(capsys):
 @covers("R-VER-01")
 def test_every_hint_is_reachable_text():
     assert all(k and v for k, v in verify.HINTS)
+
+
+@covers("R-CLI-03")
+def test_cli_opens_project_for_current_folder(tmp_path, monkeypatch):
+    from harness import store
+    a = tmp_path / "app"
+    (a / "src").mkdir(parents=True)
+    (tmp_path / "other").mkdir()
+    pa = store.create_project("App", str(a))
+    monkeypatch.chdir(a)
+    assert cli.project_for_cwd()["id"] == pa["id"]
+    monkeypatch.chdir(a / "src")  # inside a project folder -> same project
+    assert cli.project_for_cwd()["id"] == pa["id"]
+    n = len(store.list_projects())
+    monkeypatch.chdir(tmp_path / "other")  # unknown folder -> new project named after it
+    new = cli.project_for_cwd()
+    assert new["name"] == "other" and new["root"] == str((tmp_path / "other").resolve()) and len(store.list_projects()) == n + 1
+    assert cli.project_for_cwd()["id"] == new["id"]  # and it is reused next time
