@@ -53,6 +53,30 @@ def _result_text(fr: dict) -> str:
     return str(r.get("output", r))
 
 
+# ---- audit / dry run ----
+
+def _audit(alias, spec, contents, system, tools, counts) -> None:
+    """Record the request exactly as it leaves this machine (already masked). Never records credentials."""
+    import json
+    rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "alias": alias, "provider": spec.get("provider", "gemini"),
+           "model": spec.get("model"), "masked": dict(counts), "dry_run": config.DRY_RUN,
+           "system": system, "contents": contents, "tools": [d["name"] for d in _declarations(tools)]}
+    line = json.dumps(rec, ensure_ascii=False)
+    if config.AUDIT_LOG:
+        config.AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
+        new = not config.AUDIT_LOG.exists()
+        with open(config.AUDIT_LOG, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+        if new:
+            try:
+                config.AUDIT_LOG.chmod(0o600)
+            except OSError:
+                pass
+    else:
+        import sys
+        print("[dry-run] request that would be sent:\n" + json.dumps(rec, indent=2, ensure_ascii=False), file=sys.stderr)
+
+
 # ---- public entry point ----
 
 def generate(alias: str, contents: list, system: str = "", tools: list | None = None,
@@ -64,6 +88,16 @@ def generate(alias: str, contents: list, system: str = "", tools: list | None = 
     spec = config.MODELS.get(alias)
     if not spec:
         raise RuntimeError(f"Unknown model '{alias}'. Configured: {', '.join(config.MODELS)}")
+    if config.REDACT:  # mask secrets/PII in the copy that leaves this machine (files and history stay intact)
+        from .. import redact
+        contents, system, counts = redact.mask_request(contents, system)
+        redact.report(counts)
+    else:
+        counts = {}
+    if config.AUDIT_LOG or config.DRY_RUN:
+        _audit(alias, spec, contents, system, tools, counts)
+    if config.DRY_RUN:
+        return ({"role": "model", "parts": [{"text": "(dry run: request was masked and logged, not sent)"}]}, {}, {})
     provider = spec.get("provider", "gemini")
     fn = {"gemini": _g, "openai": _o, "anthropic": _a}.get(provider)
     if not fn:

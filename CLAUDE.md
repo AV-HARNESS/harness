@@ -45,15 +45,20 @@ harness/
 - Project = root folder + context blocks (markdown notes) + sessions. Deleting a project never deletes the root.
 - Local storage only (`~/.harness/`). Never commit secrets, tokens, `.env`, or `~/.harness`.
 - No approval prompts or sandbox, by the owner's choice. Server binds to 127.0.0.1 only (no auth needed).
-- Config via env vars only; never log secrets. See `config.py` for the full list.
+- Config via env vars only; never log secrets.
+- Privacy: `redact.py` masks secrets/PII in every model request (hook is `providers.generate`); `tools._guard` blocks sensitive files. On by default; keep it that way. See `config.py` for the full list.
 - Context compaction: when `prompt_tokens > HARNESS_COMPACT_AT`, the agent summarises history in-place.
 
+## Spec and tests (source of truth)
+- `SPEC.md` = what the harness promises (IDs `R-AREA-NN`). `tests/` verifies every ID via `@covers("R-...")`; `tests/test_spec.py` enforces the mapping.
+- Behaviour change => update SPEC.md + tests in the same commit. Run `pytest` before pushing (CI runs it on every push; `.githooks/pre-push` too).
+- Tests never touch network, real keys, or `~/.harness` (see `tests/conftest.py`).
+
 ## Status
-Tested only against fake local servers. NOT yet run against real Vertex, OpenAI, Anthropic, or the org gateway.
+Automated tests use fake local servers only. NOT yet run against real Vertex, OpenAI, Anthropic, or the org gateway.
 First step: run `python3 -m harness verify` and fix what real APIs reveal (model IDs, URL layout, schema quirks).
 
 ## Backlog
-1. pytest suite (fake HTTP servers via `VERTEX_HOST` / model `base_url`, `HARNESS_HOME=<tmp>`)
 2. Streaming responses
 3. Load project `AGENTS.md`/`CLAUDE.md` into the system prompt
 4. Task-list tool, sub-agents, MCP

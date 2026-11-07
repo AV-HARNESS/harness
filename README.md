@@ -66,3 +66,43 @@ web_search needs a Gemini model configured; other tools work with every provider
 ## Layout
     auth.py OAuth | llm.py providers (gemini/openai/anthropic) | verify.py | tools.py bash/files/web | agent.py loop + compaction
     store.py projects/blocks/sessions | cli.py | server.py + static/index.html
+
+## Privacy: what is masked before a model call
+Everything sent to a model passes through `redact.py` first: the system prompt, your messages, tool results and
+tool-call arguments. It masks API keys, tokens, JWTs, private keys, `password=`/`secret=` style values, URL
+credentials, emails, internal IPs, SSNs and card numbers, the exact values of secret-looking environment variables
+(including everything in your `.env`), and any words in `HARNESS_REDACT_TERMS`. Masked values appear to the model as
+`[REDACTED:type]`; files on disk and your local history are not changed, and the model cannot write placeholders back.
+Sensitive files (`.env`, `*.pem`, `*.key`, `token.json`, `.harness/` ...) are blocked from the file tools.
+A one-line note on stderr says how many items were masked; it never prints the values.
+
+Limits: your source code is still sent (that is the point of the tool), and proprietary or client-specific content is
+only caught if you list it in `HARNESS_REDACT_TERMS`. Masking does not hide the calls themselves from your network or gateway.
+Preview it: `python -m harness redact "some text"`. Tests: `PYTHONPATH=src python -m pytest tests`.
+
+### Web UI (Claude-style composer)
+- **`+` menu**: link a folder (the agent then works only there), attach files from it, session instructions, voice language.
+- **Model picker** sits in the composer. **Mic** dictates into the box (you press Enter to send). **Headphones** = voice mode: it sends when you stop talking and reads the reply aloud.
+- File tools (read/write/edit/list) are confined to the linked folder (`HARNESS_CONFINE=0` to turn off). `bash` starts there but is not sandboxed.
+- Voice uses the browser's speech recognition; in Chrome/Edge the audio goes to the browser vendor's speech service, not to the model.
+
+### See exactly what leaves your machine
+- `HARNESS_DRY_RUN=1`: builds and masks the request, prints it to the terminal, sends nothing (no credentials needed).
+- `HARNESS_AUDIT_LOG=1`: every request is also written, as sent, to `~/.harness/audit.jsonl` (or give a path). Open it to see what a gateway log would contain.
+- `HARNESS_REDACT_STRICT=1`: also masks 9+ digit numbers and user names in paths. `HARNESS_REDACT_PATTERNS='ACME-\d{6}||cust_[a-z]+'` masks your own patterns.
+
+## Spec and tests: how to trust this without reading code
+- **`SPEC.md`** lists everything the harness promises, one ID per line (`R-LOOP-01`, `R-PRIV-06`, ...).
+- **`tests/`** has at least one test per ID (`@covers("R-...")`). `tests/test_spec.py` fails if a spec line has no test, or a test points at an ID that isn't in the spec.
+- Items marked `[manual]` need live credentials; run `python -m harness verify` for those.
+- Tests use fake local servers only: no network, no real keys, no `~/.harness`.
+
+```
+pip install -e ".[dev]"
+pytest                                   # all tests, ~20s
+pytest -k R_PRIV -v                      # or: pytest tests/test_redact.py
+git config core.hooksPath .githooks      # once per clone: runs pytest before every git push
+```
+GitHub Actions (`.github/workflows/tests.yml`) runs the same suite on every push and PR, on Python 3.11 and 3.12. A red X on a commit means a promise in SPEC.md broke.
+
+Changing behaviour: edit `SPEC.md` and the test in the same commit.

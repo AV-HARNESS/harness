@@ -1,6 +1,0 @@
-requests
-fastapi
-uvicorn
-google-auth
-google-auth-oauthlib
-python-dotenv
