@@ -141,7 +141,8 @@
   .menu button .i { color:var(--mute); width:17px; height:17px; }
   .menu small { display:block; color:var(--mute); padding:4px 11px 4px; font-size:12px; }
   .dict { display:none; flex:1; align-items:center; gap:10px; }
-  .dict canvas { flex:1; height:34px; min-width:0; }
+  .dict .wv { flex:1; min-width:0; height:36px; position:relative; overflow:hidden; }
+  .dict canvas { position:absolute; inset:0; width:100%; height:100%; }
   .composer.dictating .crow > :not(.dict) { display:none !important; } .composer.dictating .dict { display:flex; }
   #dx { color:var(--mute); } #dx:hover { color:var(--accent); border-color:var(--accent); }
   .chips { display:flex; flex-wrap:wrap; gap:6px; padding-bottom:8px; }
@@ -211,7 +212,7 @@
         <button id="send" class="primary ic" title="Send"><svg class="i "><use href="#i-up"/></svg></button>
         <div class="dict" id="dict">
           <button id="dx" class="ic" title="Cancel (discard what I heard)"><svg class="i "><use href="#i-x"/></svg></button>
-          <canvas id="wave"></canvas>
+          <div class="wv"><canvas id="wave"></canvas></div>
           <button id="dok" class="primary ic" title="Done (keep the text)"><svg class="i "><use href="#i-check"/></svg></button>
         </div>
       </div>
@@ -563,21 +564,26 @@ function fit() { $('in').style.height = 'auto'; $('in').style.height = $('in').s
 // live waveform of the microphone level (separate audio stream; falls back to a gentle animation)
 let wv = {raf: 0, stream: null, ctx: null};
 async function startWave() {
-  const cv = $('wave'), g = cv.getContext('2d'); let an = null, data = null;
+  const cv = $('wave'), g = cv.getContext('2d'); let an = null, buf = null, levels = [], last = 0;
   try {
     wv.stream = await navigator.mediaDevices.getUserMedia({audio: true});
     wv.ctx = new (window.AudioContext || window.webkitAudioContext)();
-    an = wv.ctx.createAnalyser(); an.fftSize = 128; wv.ctx.createMediaStreamSource(wv.stream).connect(an); data = new Uint8Array(an.frequencyBinCount);
+    an = wv.ctx.createAnalyser(); an.fftSize = 512; wv.ctx.createMediaStreamSource(wv.stream).connect(an); buf = new Uint8Array(an.fftSize);
   } catch (e) { an = null; }
-  const col = () => getComputedStyle(document.documentElement).getPropertyValue('--mute').trim() || '#888';
   const draw = t => {
-    const w = cv.width = cv.clientWidth * devicePixelRatio, h = cv.height = cv.clientHeight * devicePixelRatio;
-    g.clearRect(0, 0, w, h); g.fillStyle = col();
-    const n = Math.floor(cv.clientWidth / 5), bw = 2 * devicePixelRatio, gap = w / n;
-    if (an) an.getByteFrequencyData(data);
-    for (let i = 0; i < n; i++) {
-      const v = an ? data[Math.floor(i / n * data.length * .6)] / 255 : (Math.sin(t / 260 + i / 3) + 1) / 5;
-      const bh = Math.max(bw, v * h * .95); g.fillRect(i * gap, (h - bh) / 2, bw, bh);
+    const dpr = devicePixelRatio || 1, w = cv.width = Math.floor(cv.clientWidth * dpr), h = cv.height = Math.floor(cv.clientHeight * dpr);
+    const bw = 3 * dpr, step = 6 * dpr, n = Math.ceil(w / step) + 1;
+    if (!levels.length) levels = new Array(n).fill(0);   // idle row of dots across the full width
+    if (t - last > 55) {   // one new bar every ~55ms; the row scrolls left like Claude's
+      last = t; let v;
+      if (an) { an.getByteTimeDomainData(buf); let sum = 0; for (const x of buf) { const d = (x - 128) / 128; sum += d * d; } v = Math.max(0, Math.min(1, (Math.sqrt(sum / buf.length) - 0.008) * 9)); }
+      else v = (Math.sin(t / 300) + 1) / 6;
+      levels.push(v); if (levels.length > n) levels.shift();
+    }
+    g.clearRect(0, 0, w, h); g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--ink').trim() || '#222'; g.globalAlpha = .8;
+    for (let i = 0; i < levels.length; i++) {
+      const x = w - (levels.length - i) * step, bh = Math.max(3 * dpr, levels[i] * h * .95);
+      g.beginPath(); g.roundRect ? g.roundRect(x, (h - bh) / 2, bw, bh, bw / 2) : g.rect(x, (h - bh) / 2, bw, bh); g.fill();
     }
     wv.raf = requestAnimationFrame(draw);
   };
