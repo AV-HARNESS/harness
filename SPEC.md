@@ -86,6 +86,7 @@ Change behaviour => change this file and the test in the same commit.
 - **R-SRV-08** With `project=<id>`, `/api/fs` stays inside that project's root (used for attaching files).
 - **R-SRV-09** `GET /api/places` returns the picker's sidebar: existing Home/Desktop/Documents/Downloads, the folders of your projects, and drives on Windows.
 - **R-UI-01** The page has the Claude-style composer: a `+` menu (link folder, attach files, instructions, voice language), the model picker, a dictation mic, a voice-mode button and send; a Finder-style folder picker (places sidebar, breadcrumb, back/forward, search, list with dates); a dictation bar with live waveform and cancel (✕) / accept (✓) buttons; and the linked folder shown above the box.
+- **R-UI-03** [manual] In a browser: consecutive tool steps collapse into one summary line ("Read 2 files, ran 1 command") that expands to the individual steps, each with its own output; a text reply ends the group.
 - **R-UI-02** [manual] In a browser: dictation shows a live waveform with ✕ (discard) and ✓ (keep text), fills the box live and waits for you to send; voice mode sends when you stop talking and reads the reply aloud; the folder picker links a folder and the agent then works there; attached files appear as chips.
 
 ## 8. CLI and verify (`cli.py`, `verify.py`)

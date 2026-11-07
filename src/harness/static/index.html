@@ -109,9 +109,17 @@
   .msg { margin:0 0 20px; white-space:pre-wrap; word-wrap:break-word; }
   .user { background:var(--panel); border-radius:16px; padding:11px 16px; }
   .err { color:#c0392b; } .sys { color:var(--mute); font-size:13px; }
-  details.tool { margin:0 0 12px; border:1px solid var(--line); border-radius:10px; font-size:13px; background:var(--card); }
-  details.tool summary { padding:7px 12px; cursor:pointer; color:var(--mute); font-family:ui-monospace,monospace; }
-  details.tool pre { margin:0; padding:10px 12px; border-top:1px solid var(--line); overflow:auto; max-height:320px; font-size:12px; white-space:pre-wrap; }
+  /* tool steps: collapsed into one line, like Claude */
+  .steps { margin:0 0 16px; font-size:13px; }
+  .steps > summary { list-style:none; cursor:pointer; display:inline-flex; align-items:center; gap:7px; padding:4px 11px 4px 9px; border-radius:20px; color:var(--mute); background:var(--hover); max-width:100%; }
+  .steps > summary::-webkit-details-marker { display:none; } .steps > summary:hover { color:var(--ink); }
+  .steps > summary .i { width:13px; height:13px; transition:transform .15s; } .steps[open] > summary .i { transform:rotate(90deg); }
+  .steps > summary .lbl { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .steps.live > summary::after { content:''; width:6px; height:6px; border-radius:50%; background:var(--accent); animation:pulse 1s infinite; flex-shrink:0; }
+  .steps .body { margin:8px 0 0 10px; padding-left:14px; border-left:2px solid var(--line); max-height:240px; overflow:auto; }
+  .step summary { font:12px ui-monospace,monospace; color:var(--mute); padding:3px 0; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; list-style:none; }
+  .step summary::-webkit-details-marker { display:none; } .step summary:hover { color:var(--ink); } .step.bad summary { color:#c0392b; }
+  .step pre { margin:2px 0 8px; padding:8px 10px; background:var(--panel); border-radius:8px; overflow:auto; max-height:160px; font-size:11.5px; white-space:pre-wrap; color:var(--ink); }
   pre.code { background:var(--code); color:#eee; border-radius:10px; padding:12px 14px; overflow:auto; }
   code { background:var(--panel); padding:1px 5px; border-radius:5px; font-size:.92em; }
   footer { padding:6px 0 18px; }
@@ -133,7 +141,8 @@
   .menu button .i { color:var(--mute); width:17px; height:17px; }
   .menu small { display:block; color:var(--mute); padding:4px 11px 4px; font-size:12px; }
   .dict { display:none; flex:1; align-items:center; gap:10px; }
-  .dict canvas { flex:1; height:34px; min-width:0; }
+  .dict .wv { flex:1; min-width:0; height:36px; position:relative; overflow:hidden; }
+  .dict canvas { position:absolute; inset:0; width:100%; height:100%; }
   .composer.dictating .crow > :not(.dict) { display:none !important; } .composer.dictating .dict { display:flex; }
   #dx { color:var(--mute); } #dx:hover { color:var(--accent); border-color:var(--accent); }
   .chips { display:flex; flex-wrap:wrap; gap:6px; padding-bottom:8px; }
@@ -203,7 +212,7 @@
         <button id="send" class="primary ic" title="Send"><svg class="i "><use href="#i-up"/></svg></button>
         <div class="dict" id="dict">
           <button id="dx" class="ic" title="Cancel (discard what I heard)"><svg class="i "><use href="#i-x"/></svg></button>
-          <canvas id="wave"></canvas>
+          <div class="wv"><canvas id="wave"></canvas></div>
           <button id="dok" class="primary ic" title="Done (keep the text)"><svg class="i "><use href="#i-check"/></svg></button>
         </div>
       </div>
@@ -250,22 +259,45 @@ function md(t) {
     .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
 }
 function add(cls, html) {
+  if (typeof endSteps === 'function') endSteps();
   const d = document.createElement('div'); d.className = 'msg ' + cls; d.innerHTML = html;
   $('msgs').appendChild(d); $('log').scrollTop = 1e9; return d;
 }
 let lastTool = null, spoken = '', files = [], voiceMode = false;
 const SVG = n => `<svg class="i"><use href="#i-${n}"/></svg>`;
 const setSend = on => { $('send').innerHTML = SVG(on ? 'stop' : 'up'); $('send').title = on ? 'Stop' : 'Send'; };
+let grp = null, grpCount = {}, pend = [];
+const KIND = {bash: ['ran', 'command', 'commands'], read_file: ['read', 'file', 'files'], write_file: ['wrote', 'file', 'files'],
+  edit_file: ['edited', 'file', 'files'], list_dir: ['listed', 'folder', 'folders'], web_fetch: ['fetched', 'page', 'pages'],
+  web_search: ['searched the web', 'time', 'times'], read_block: ['read', 'note', 'notes'], list_blocks: ['read', 'note', 'notes'],
+  write_block: ['updated', 'note', 'notes']};
+function grpLabel() {
+  const parts = [];
+  for (const [k, n] of Object.entries(grpCount)) {
+    const [verb, one, many] = KIND[k] || ['used ' + k, 'time', 'times'];
+    parts.push(k === 'web_search' ? (n === 1 ? 'searched the web' : `searched the web ${n} times`) : `${verb} ${n} ${n === 1 ? one : many}`);
+  }
+  const t = parts.join(', ') || 'working'; return t[0].toUpperCase() + t.slice(1);
+}
 function toolCall(name, args) {
-  const d = document.createElement('details'); d.className = 'tool';
-  const a = Object.entries(args || {}).map(([k, v]) => `${k}=${JSON.stringify(String(v).slice(0, 60))}`).join(', ');
-  d.innerHTML = `<summary>${esc(name)}(${esc(a)})</summary><pre>${esc(JSON.stringify(args, null, 2))}</pre>`;
-  $('msgs').appendChild(d); lastTool = d; $('log').scrollTop = 1e9;
+  if (!grp) {
+    grp = document.createElement('details'); grp.className = 'steps live'; grpCount = {};
+    grp.innerHTML = `<summary>${SVG('right')}<span class="lbl"></span></summary><div class="body"></div>`;
+    $('msgs').appendChild(grp);
+  }
+  grpCount[name] = (grpCount[name] || 0) + 1; grp.querySelector('.lbl').textContent = grpLabel();
+  const a = Object.values(args || {}).map(v => String(v).replace(/\s+/g, ' ').slice(0, 70))[0] || '';
+  const d = document.createElement('details'); d.className = 'step';
+  d.innerHTML = `<summary>${esc(name)}  ${esc(a)}</summary><pre>${esc(JSON.stringify(args, null, 2))}</pre>`;
+  grp.querySelector('.body').appendChild(d); lastTool = d; pend.push(d);
+  const body = grp.querySelector('.body'); body.scrollTop = 1e9; $('log').scrollTop = 1e9;
 }
 function toolResult(out) {
-  if (!lastTool) return;
-  const p = document.createElement('pre'); p.textContent = out; lastTool.appendChild(p);
+  const d = pend.shift() || lastTool; if (!d) return;   // results arrive in the same order as the calls
+  const p = document.createElement('pre'); p.textContent = out; d.appendChild(p);
+  if (String(out).startsWith('ERROR')) d.classList.add('bad');
 }
+function endSteps() { if (grp) grp.classList.remove('live'); grp = null; pend = []; }
 function render(m) {
   for (const p of m.parts) {
     if (p.thought) continue;
@@ -295,8 +327,8 @@ async function loadList() {
 }
 async function open(id) {
   cur = await api('GET', '/api/sessions/' + id);
-  $('msgs').innerHTML = ''; lastTool = null;
-  cur.messages.forEach(render);
+  $('msgs').innerHTML = ''; lastTool = null; grp = null;
+  cur.messages.forEach(render); endSteps();
   $('title').value = cur.title; $('model').value = cur.model; $('instr').value = cur.instructions || '';
   setTok(cur.prompt_tokens); loadList();
 }
@@ -329,7 +361,7 @@ async function send() {
       else if (e.type === 'error') add('err', esc(e.error));
     }
   }
-  running = false; setSend(false);
+  running = false; setSend(false); endSteps();
   if (voiceMode) speak(spoken); spoken = '';
   cur = await api('GET', '/api/sessions/' + cur.id); $('title').value = cur.title; loadList();
 }
@@ -532,21 +564,26 @@ function fit() { $('in').style.height = 'auto'; $('in').style.height = $('in').s
 // live waveform of the microphone level (separate audio stream; falls back to a gentle animation)
 let wv = {raf: 0, stream: null, ctx: null};
 async function startWave() {
-  const cv = $('wave'), g = cv.getContext('2d'); let an = null, data = null;
+  const cv = $('wave'), g = cv.getContext('2d'); let an = null, buf = null, levels = [], last = 0;
   try {
     wv.stream = await navigator.mediaDevices.getUserMedia({audio: true});
     wv.ctx = new (window.AudioContext || window.webkitAudioContext)();
-    an = wv.ctx.createAnalyser(); an.fftSize = 128; wv.ctx.createMediaStreamSource(wv.stream).connect(an); data = new Uint8Array(an.frequencyBinCount);
+    an = wv.ctx.createAnalyser(); an.fftSize = 512; wv.ctx.createMediaStreamSource(wv.stream).connect(an); buf = new Uint8Array(an.fftSize);
   } catch (e) { an = null; }
-  const col = () => getComputedStyle(document.documentElement).getPropertyValue('--mute').trim() || '#888';
   const draw = t => {
-    const w = cv.width = cv.clientWidth * devicePixelRatio, h = cv.height = cv.clientHeight * devicePixelRatio;
-    g.clearRect(0, 0, w, h); g.fillStyle = col();
-    const n = Math.floor(cv.clientWidth / 5), bw = 2 * devicePixelRatio, gap = w / n;
-    if (an) an.getByteFrequencyData(data);
-    for (let i = 0; i < n; i++) {
-      const v = an ? data[Math.floor(i / n * data.length * .6)] / 255 : (Math.sin(t / 260 + i / 3) + 1) / 5;
-      const bh = Math.max(bw, v * h * .95); g.fillRect(i * gap, (h - bh) / 2, bw, bh);
+    const dpr = devicePixelRatio || 1, w = cv.width = Math.floor(cv.clientWidth * dpr), h = cv.height = Math.floor(cv.clientHeight * dpr);
+    const bw = 3 * dpr, step = 6 * dpr, n = Math.ceil(w / step) + 1;
+    if (!levels.length) levels = new Array(n).fill(0);   // idle row of dots across the full width
+    if (t - last > 55) {   // one new bar every ~55ms; the row scrolls left like Claude's
+      last = t; let v;
+      if (an) { an.getByteTimeDomainData(buf); let sum = 0; for (const x of buf) { const d = (x - 128) / 128; sum += d * d; } v = Math.max(0, Math.min(1, (Math.sqrt(sum / buf.length) - 0.008) * 9)); }
+      else v = (Math.sin(t / 300) + 1) / 6;
+      levels.push(v); if (levels.length > n) levels.shift();
+    }
+    g.clearRect(0, 0, w, h); g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--ink').trim() || '#222'; g.globalAlpha = .8;
+    for (let i = 0; i < levels.length; i++) {
+      const x = w - (levels.length - i) * step, bh = Math.max(3 * dpr, levels[i] * h * .95);
+      g.beginPath(); g.roundRect ? g.roundRect(x, (h - bh) / 2, bw, bh, bw / 2) : g.rect(x, (h - bh) / 2, bw, bh); g.fill();
     }
     wv.raf = requestAnimationFrame(draw);
   };
