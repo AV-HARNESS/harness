@@ -4,16 +4,16 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Harness</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23c6613f'/%3E%3Cpath d='M9 22l7-12 7 12' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231f7a78'/%3E%3Cpath d='M9 22l7-12 7 12' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>
   :root {
-    --bg:#faf9f5; --side:#f3f1ea; --panel:#efede5; --card:#fffefb; --ink:#1f1e1d; --mute:#7a7870; --line:#e4e1d6;
-    --hover:rgba(0,0,0,.045); --sel:rgba(198,97,63,.12); --accent:#c6613f; --accent-ink:#fff; --code:#2b2a28;
+    --bg:#f6f8f8; --side:#edf1f1; --panel:#e6ecec; --card:#fcfefe; --ink:#1c2222; --mute:#6b7776; --line:#dbe3e3;
+    --hover:rgba(0,0,0,.045); --sel:rgba(31,122,120,.12); --accent:#1f7a78; --accent-ink:#fff; --code:#2b2a28;
     --folder:#5aa9e6; --shadow:0 8px 30px rgba(0,0,0,.14); --r:12px;
   }
   @media (prefers-color-scheme: dark) { :root {
-    --bg:#262624; --side:#1f1e1d; --panel:#30302d; --card:#2b2a28; --ink:#ececea; --mute:#9a9890; --line:#3a3936;
-    --hover:rgba(255,255,255,.06); --sel:rgba(217,119,87,.2); --accent:#d97757; --code:#171716; --folder:#6bb6f0;
+    --bg:#1f2625; --side:#181f1e; --panel:#28302f; --card:#232b2a; --ink:#e8eeed; --mute:#8fa09e; --line:#34403f;
+    --hover:rgba(255,255,255,.06); --sel:rgba(42,157,151,.22); --accent:#2a9d97; --code:#121817; --folder:#6bb6f0;
     --shadow:0 8px 30px rgba(0,0,0,.5); } }
   * { box-sizing:border-box; }
   ::-webkit-scrollbar { width:10px; height:10px; } ::-webkit-scrollbar-thumb { background:var(--line); border-radius:10px; border:3px solid transparent; background-clip:content-box; }
@@ -426,7 +426,7 @@ async function switchProject(id) {
   const ss = await api('GET', '/api/sessions?project=' + proj.id);
   await loadList(); if (ss.length) open(ss[0].id);
 }
-const HUES = ['#c6613f', '#4f8a8b', '#7a6bb0', '#b5763a', '#5b7fb5', '#a35b7e', '#6c8f4e'];
+const HUES = ['#1f7a78', '#3d7ab8', '#7a6bb0', '#b5763a', '#5b7fb5', '#a35b7e', '#6c8f4e'];
 const hue = n => HUES[[...n].reduce((a, c) => a + c.charCodeAt(0), 0) % HUES.length];
 const avatar = p => `<span class="av" style="background:${hue(p.name)}">${esc((p.name[0] || '?').toUpperCase())}</span>`;
 const short = r => r.split(/[\\/]/).filter(Boolean).slice(-2).join('/') || r;
