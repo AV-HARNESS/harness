@@ -178,3 +178,14 @@ def test_stopped_run_hands_queued_messages_back(session, fake):
     stop.set()
     agent.run_turn(session, "go", lambda e: None, stop, inbox)
     assert agent._drain(inbox) == ["later"]
+@covers("R-LOOP-11")
+def test_agents_md_is_loaded_or_requested(session, project):
+    from pathlib import Path
+    root = Path(project["root"])
+    assert "create AGENTS.md" in agent.build_system(project, session)
+    (root / "CLAUDE.md").write_text("run: make test", encoding="utf-8")
+    sys_prompt = agent.build_system(project, session)
+    assert "run: make test" in sys_prompt and "create AGENTS.md" not in sys_prompt and "update it with edit_file" in sys_prompt
+    (root / "AGENTS.md").write_text("use pytest -q", encoding="utf-8")
+    sys_prompt = agent.build_system(project, session)
+    assert "use pytest -q" in sys_prompt and "run: make test" not in sys_prompt
