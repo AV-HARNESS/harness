@@ -114,7 +114,9 @@ def _drain(inbox) -> list[str]:
     out = []
     while inbox is not None:
         try:
-            out.append(inbox.get_nowait())
+            m = inbox.get_nowait()
+            if str(m).strip():  # blank messages (e.g. an empty voice transcript) must never reach the model
+                out.append(m)
         except Exception:
             break
     return out
@@ -123,6 +125,8 @@ def _drain(inbox) -> list[str]:
 def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None, inbox=None) -> None:
     project = store.get_project(s["project"])
     tools.PROJECT.set(project)
+    if not str(text).strip():
+        return  # an empty user turn is dropped by Gemini and leaves the request ending with a model turn
     s["messages"].append({"role": "user", "parts": [{"text": text}]})
     if s["title"] == "New session":
         s["title"] = text.strip().splitlines()[0][:50] or "New session"
@@ -138,6 +142,8 @@ def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None
         if pt > config.COMPACT_AT and pt > s.get("compact_base", 0) * 1.25:
             compact(s, emit)
         system = build_system(project, s)  # rebuilt each step so block edits apply immediately
+        if s["messages"][-1]["role"] != "user":  # Gemini rejects requests ending with a model turn
+            s["messages"].append({"role": "user", "parts": [{"text": "Continue."}]})
         content, usage, _ = llm.generate(s["model"], s["messages"], system, tools.DECLARATIONS)
         s["messages"].append(content)
         s["prompt_tokens"] = usage.get("promptTokenCount", 0)
