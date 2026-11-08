@@ -18,6 +18,7 @@ STATIC = Path(__file__).parent / "static"
 _stops: dict[str, threading.Event] = {}
 _busy: set[str] = set()
 _inboxes: dict[str, queue.Queue] = {}
+_live: dict[str, dict] = {}  # sessions being worked on: the one in-memory copy every reader and writer shares
 
 
 class ProjectIn(BaseModel):
@@ -46,6 +47,8 @@ class Chat(BaseModel):
 
 
 def _get(sid: str) -> dict:
+    if sid in _live:  # a running session: use the live object, so a title change or a refresh never works from a stale file copy
+        return _live[sid]
     try:
         return store.load(sid)
     except KeyError:
@@ -229,7 +232,7 @@ def new_session(b: New):
 
 @app.get("/api/sessions/{sid}")
 def get_session(sid: str):
-    return _get(sid)
+    return {**_get(sid), "running": sid in _busy}
 
 
 @app.patch("/api/sessions/{sid}")
@@ -247,6 +250,8 @@ def patch_session(sid: str, b: Patch):
 
 @app.delete("/api/sessions/{sid}")
 def del_session(sid: str):
+    if sid in _busy:
+        raise HTTPException(409, "session is running; stop it first")
     store.delete(sid)
     return {"ok": True}
 
@@ -260,6 +265,8 @@ def stop(sid: str):
 
 @app.post("/api/sessions/{sid}/compact")
 def compact(sid: str):
+    if sid in _busy:
+        raise HTTPException(409, "session is running; try again when it finishes")
     s = _get(sid)
     return {"compacted": agent.compact(s)}
 
@@ -280,6 +287,7 @@ def chat(sid: str, b: Chat):
         raise HTTPException(409, "session is already running")
     if b.model and config.get_model(b.model):
         s["model"] = b.model
+    _live[sid] = s
     q: queue.Queue = queue.Queue()
     ev = _stops[sid] = threading.Event()
     inbox = _inboxes[sid] = queue.Queue()
@@ -311,6 +319,7 @@ def chat(sid: str, b: Chat):
             q.put({"type": "error", "error": msg, "ref": ref})
         finally:
             _busy.discard(sid)
+            _live.pop(sid, None)
             left = agent._drain(inbox)  # queued but never delivered (e.g. stopped): UI sends them next
             if left:
                 q.put({"type": "leftover", "texts": left})
