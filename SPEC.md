@@ -14,6 +14,7 @@ Change behaviour => change this file and the test in the same commit.
 - **R-LOOP-04** Tool output stored in history is trimmed to `HARNESS_HISTORY_TOOL_TRIM` chars; the UI event still gets the full output.
 - **R-LOOP-05** The system prompt is rebuilt on every step with project name, root, all context blocks (per-block and total size caps) and session instructions, so block edits apply immediately.
 - **R-LOOP-11** If the project root has `AGENTS.md` (or `CLAUDE.md`) it is added to the system prompt and the agent is told to keep it updated; if neither exists the agent is told to create `AGENTS.md` once it understands the project.
+- **R-LOOP-12** Compaction never repeats on every step: after one, the next waits until the prompt has grown ~25% past its size right after it; and when one long turn is most of the context, it is cut inside the turn (keeping the last few steps, never splitting a tool call from its result).
 - **R-LOOP-06** Model "thought" parts are never shown to the user, and are kept verbatim in history (thought signatures survive).
 - **R-LOOP-07** When the prompt exceeds `HARNESS_COMPACT_AT`, older turns are replaced by a summary and the last `HARNESS_KEEP_TURNS` user turns are kept verbatim.
 - **R-LOOP-08** A new session is titled from the first user message; the session is saved after every step.

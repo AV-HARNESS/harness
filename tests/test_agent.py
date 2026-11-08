@@ -189,3 +189,41 @@ def test_agents_md_is_loaded_or_requested(session, project):
     (root / "AGENTS.md").write_text("use pytest -q", encoding="utf-8")
     sys_prompt = agent.build_system(project, session)
     assert "use pytest -q" in sys_prompt and "run: make test" not in sys_prompt
+
+
+def _long_turn(session, steps=12, size=4000):
+    session["messages"] = [{"role": "user", "parts": [{"text": "big job"}]}]
+    for i in range(steps):
+        session["messages"] += [
+            {"role": "model", "parts": [{"functionCall": {"name": "list_dir", "args": {"path": "x" * size}}}]},
+            {"role": "user", "parts": [{"functionResponse": {"name": "list_dir", "response": {"output": f"r{i}"}}}]}]
+
+
+@covers("R-LOOP-12")
+def test_compaction_cuts_inside_one_long_turn_without_splitting_calls(session, fake, monkeypatch):
+    monkeypatch.setattr(config, "COMPACT_AT", 1000)
+    _long_turn(session)
+    fake.push((200, gem(text("SUM"))))
+    assert agent.compact(session)
+    msgs = session["messages"]
+    assert "SUM" in msgs[0]["parts"][0]["text"] and msgs[1]["role"] == "model" and "functionCall" in msgs[1]["parts"][0]
+    assert len(msgs) <= agent.KEEP_STEPS + 2
+    assert [m["role"] for m in msgs] == ["user"] + ["model", "user"] * ((len(msgs) - 1) // 2)  # alternation intact
+
+
+@covers("R-LOOP-12")
+def test_no_compaction_on_every_step_when_context_stays_big(session, fake, monkeypatch):
+    monkeypatch.setattr(config, "COMPACT_AT", 1000)
+    summaries = []
+    real = agent.compact
+    monkeypatch.setattr(agent, "compact", lambda s, emit=lambda e: None: summaries.append(1) or real(s, emit))
+    _long_turn(session, steps=2)
+    session["prompt_tokens"] = 5000
+    # every reply reports a still-huge prompt (5000), as when recent steps hold big files
+    big = lambda parts: {**gem(*parts), "usageMetadata": {"promptTokenCount": 5000}}
+    fake.push((200, gem(text("SUM"))))                       # the one compaction summary
+    for _ in range(4):
+        fake.push((200, big([call("list_dir")])))
+    fake.push((200, big([text("done")])))
+    agent.run_turn(session, "go", lambda e: None, None)
+    assert len(summaries) == 1

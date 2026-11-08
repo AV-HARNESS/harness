@@ -56,29 +56,54 @@ def _is_user_text(m: dict) -> bool:
     return m["role"] == "user" and any("text" in p for p in m["parts"])
 
 
-def compact(s: dict, emit: Emit = lambda e: None) -> bool:
-    """Summarize old turns, keep the last KEEP_TURNS full turns verbatim.
+KEEP_STEPS = 10  # messages kept verbatim when one long turn is itself the bulk of the context
 
-    This mirrors how Claude.ai handles long contexts: recent turns stay intact
-    (so the model has full tool call detail for ongoing work) while older history
-    is compressed into a dense summary to free up the context window.
+
+def _chars(msgs: list) -> int:
+    import json
+    return len(json.dumps(msgs, ensure_ascii=False))
+
+
+def _step_cut(messages: list) -> int | None:
+    """Index of a model message to start the verbatim tail at (so a tool call is never separated from its
+    result), leaving about KEEP_STEPS messages. None if there is nothing earlier to summarize."""
+    i = max(len(messages) - KEEP_STEPS, 1)
+    while i < len(messages) and messages[i]["role"] != "model":
+        i += 1
+    return i if 1 <= i < len(messages) - 1 else None
+
+
+def compact(s: dict, emit: Emit = lambda e: None) -> bool:
+    """Summarize old history so work can continue, keeping recent turns verbatim.
+
+    Normally old turns are summarized and the last KEEP_TURNS user turns stay intact. When that would not
+    shrink anything (one long turn of many tool steps is most of the context), cut inside the turn instead and
+    keep only the last few steps, so compaction actually frees space.
     """
-    user_idxs = [i for i, m in enumerate(s["messages"]) if _is_user_text(m)]
-    if len(user_idxs) <= config.KEEP_TURNS:
+    msgs = s["messages"]
+    user_idxs = [i for i, m in enumerate(msgs) if _is_user_text(m)]
+    cut, ack = None, True
+    if len(user_idxs) > config.KEEP_TURNS:
+        cut = user_idxs[-config.KEEP_TURNS]
+    if cut is None or _chars(msgs[cut:]) / 4 > config.COMPACT_AT / 2:
+        step = _step_cut(msgs)
+        if step is not None and (cut is None or step > cut):
+            cut, ack = step, False
+    if cut is None:
         return False  # not enough history to compact
-    cut = user_idxs[-config.KEEP_TURNS]  # keep last KEEP_TURNS user turns verbatim
-    old, keep = s["messages"][:cut], s["messages"][cut:]
+    old, keep = msgs[:cut], msgs[cut:]
     ask = {"role": "user", "parts": [{"text": (
         "Summarize the conversation above so work can continue seamlessly. Include: "
         "goals, decisions made, key facts discovered, file paths touched, commands run, "
-        "open tasks. Be dense and specific — this replaces the full history.")}]}
+        "open tasks. Be dense and specific - this replaces the full history.")}]}
     content, _, _ = llm.generate(s["model"], old + [ask])
     summary = "".join(p.get("text", "") for p in content["parts"] if not p.get("thought"))
-    s["messages"] = [
-        {"role": "user", "parts": [{"text": f"[Summary of earlier conversation]\n{summary}"}]},
-        {"role": "model", "parts": [{"text": "Understood. Continuing from that summary."}]},
-    ] + keep
+    head = [{"role": "user", "parts": [{"text": f"[Summary of earlier conversation]\n{summary}"}]}]
+    if ack:
+        head.append({"role": "model", "parts": [{"text": "Understood. Continuing from that summary."}]})
+    s["messages"] = head + keep
     s["prompt_tokens"] = 0
+    s["just_compacted"] = True  # the next usage report tells us how big the context is after compaction
     store.save(s)
     emit({"type": "compacted", "summary": summary})
     return True
@@ -107,12 +132,17 @@ def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None
         if stop and stop.is_set():
             emit({"type": "text", "text": "(stopped)"})
             break
-        if s.get("prompt_tokens", 0) > config.COMPACT_AT:
+        pt = s.get("prompt_tokens", 0)
+        # Not again until the context has grown ~25% past its size right after the last compaction; otherwise a
+        # context that stays big (large files in recent steps) would be re-summarized on every single step.
+        if pt > config.COMPACT_AT and pt > s.get("compact_base", 0) * 1.25:
             compact(s, emit)
         system = build_system(project, s)  # rebuilt each step so block edits apply immediately
         content, usage, _ = llm.generate(s["model"], s["messages"], system, tools.DECLARATIONS)
         s["messages"].append(content)
         s["prompt_tokens"] = usage.get("promptTokenCount", 0)
+        if s.pop("just_compacted", False):
+            s["compact_base"] = s["prompt_tokens"]
         calls = []
         for p in content["parts"]:
             if p.get("thought"):
