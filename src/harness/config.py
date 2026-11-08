@@ -66,6 +66,17 @@ def _load_models() -> dict:
 
 
 MODELS = _load_models()
+
+
+def get_model(alias: str) -> dict | None:
+    """Spec for an alias. 'source/model-id' (what the model picker lists) means: the configured alias
+    'source' with a different model id, so any model an endpoint offers can be used without editing models.json."""
+    spec = MODELS.get(alias)
+    if spec is None and "/" in alias:
+        src, _, mid = alias.partition("/")
+        if src in MODELS and mid:
+            spec = {**MODELS[src], "model": mid}
+    return spec
 DEFAULT_MODEL = os.environ.get("HARNESS_DEFAULT_MODEL", "flash")
 
 # --- agent ---

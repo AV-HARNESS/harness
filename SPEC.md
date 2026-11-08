@@ -30,6 +30,7 @@ Change behaviour => change this file and the test in the same commit.
 - **R-PROV-07** Unknown model alias or provider gives an error listing valid choices.
 - **R-PROV-08** History is provider-neutral (Gemini format): the same session can continue on a different provider.
 - **R-PROV-10** Vertex location is chosen per model: alias `location`, else `MODEL_LOCATIONS` entry for that model, else `VERTEX_LOCATION`.
+- **R-PROV-11** A model alias of the form `source/model-id` means the configured alias `source` with that model id, so any model an endpoint offers can be used without editing `models.json`.
 - **R-PROV-09** `models.json` adds aliases; entries whose model starts with `REPLACE` or alias starts with `_` are ignored.
 
 ## 3. Auth (`auth.py`)
@@ -91,6 +92,7 @@ Change behaviour => change this file and the test in the same commit.
 - **R-SRV-07** `GET /api/fs` lists folders (and with `files=1` non-sensitive files) so the UI can link a folder; hidden entries are skipped.
 - **R-SRV-08** With `project=<id>`, `/api/fs` stays inside that project's root (used for attaching files).
 - **R-SRV-10** `POST /api/sessions/<id>/queue` adds a message to a running session (409 if it isn't running); unsent queued messages are returned in a `leftover` event so the UI can send them next.
+- **R-SRV-11** `GET /api/models` lists, per configured endpoint (OpenAI-compatible, Gemini API key, Anthropic), the chat models it offers right now; a failing endpoint is reported as an error, not raised. The UI shows them in the model picker automatically.
 - **R-SRV-09** `GET /api/places` returns the picker's sidebar: existing Home/Desktop/Documents/Downloads, the folders of your projects, and drives on Windows.
 - **R-UI-01** The page has the Claude-style composer: a `+` menu (link folder, attach files, instructions, voice language), the model picker, a dictation mic, a voice-mode button and send; a Finder-style folder picker (places sidebar, breadcrumb, back/forward, search, list with dates); a dictation bar with live waveform and cancel (✕) / accept (✓) buttons; and the linked folder shown above the box.
 - **R-UI-03** [manual] In a browser: consecutive tool steps collapse into one summary line ("Read 2 files, ran 1 command") that expands to the individual steps, each with its own output; a text reply ends the group.

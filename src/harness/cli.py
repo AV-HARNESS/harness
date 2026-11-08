@@ -125,7 +125,7 @@ def chat(resume: str | None = None, project: str | None = None) -> None:
                     s["title"] = arg
                     store.save(s)
                 elif cmd == "model":
-                    if arg in config.MODELS:
+                    if config.get_model(arg):
                         s["model"] = arg
                         store.save(s)
                     else:

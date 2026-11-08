@@ -100,7 +100,7 @@ def update_project(pid: str, name=None, root=None, model=None) -> dict:
         p["name"] = name
     if root:
         p["root"] = _check_root(root)
-    if model in config.MODELS:
+    if model and config.get_model(model):
         p["model"] = model
     _write(_pdir(pid) / "project.json", json.dumps(p, indent=2))
     return p

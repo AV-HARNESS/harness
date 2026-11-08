@@ -254,3 +254,13 @@ def test_location_is_per_model(fake, monkeypatch):
         providers.generate(alias, HIST)
     locs = [r["path"].split("/locations/")[1].split("/")[0] for r in fake.requests]
     assert locs == ["global", "us", "us-central1", "eu1"]
+
+
+@covers("R-PROV-11")
+def test_source_slash_model_alias(fake, monkeypatch):
+    monkeypatch.setitem(config.MODELS, "oa", {"provider": "openai", "model": "base", "base_url": fake.url, "api_key_env": ""})
+    assert config.get_model("oa/gpt-x") == {"provider": "openai", "model": "gpt-x", "base_url": fake.url, "api_key_env": ""}
+    assert config.get_model("nope/gpt-x") is None and config.get_model("oa") ["model"] == "base"
+    fake.push((200, {"choices": [{"message": {"content": "hi"}}], "usage": {}}))
+    providers.generate("oa/gpt-x", HIST)
+    assert fake.requests[0]["body"]["model"] == "gpt-x"

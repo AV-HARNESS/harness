@@ -215,3 +215,23 @@ def test_queue_endpoint(client, session):
     assert client.post(f"/api/sessions/{sid}/queue", json={"text": "next"}).status_code == 200
     assert server._inboxes[sid].get_nowait() == "next"
     server._busy.discard(sid)
+
+
+@covers("R-SRV-11")
+def test_models_endpoint_lists_endpoint_models_and_reports_errors(client, fake, monkeypatch):
+    from harness import config, discover
+    monkeypatch.setattr(config, "MODELS", {
+        "oa": {"provider": "openai", "model": "x", "base_url": fake.url, "api_key_env": ""},
+        "bad": {"provider": "openai", "model": "y", "base_url": fake.url + "/other", "api_key_env": "NOPE_KEY_X"},
+        "vtx": {"provider": "gemini", "model": "gemini-x"}})
+    monkeypatch.delenv("NOPE_KEY_X", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.setattr(config, "PROJECT", "p")
+    monkeypatch.setitem(discover._cache, "at", 0.0)
+    fake.push((200, {"data": [{"id": "gpt-b"}, {"id": "gpt-a"}, {"id": "text-embedding-3"}, {"id": "whisper-1"}]}))
+    groups = client.get("/api/models?refresh=true").json()["groups"]
+    by = {g["source"]: g for g in groups}
+    assert [m["alias"] for m in by["oa"]["models"]] == ["oa/gpt-a", "oa/gpt-b"] and by["oa"]["error"] is None
+    assert "NOPE_KEY_X" in by["bad"]["error"] and by["bad"]["models"] == []
+    assert "vtx" not in by  # Vertex cannot be listed
