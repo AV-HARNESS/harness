@@ -42,6 +42,10 @@ PROJECT = os.environ.get("VERTEX_PROJECT", "")
 LOCATION = os.environ.get("VERTEX_LOCATION", "global")
 # Override if your org fronts Vertex with a gateway, e.g. https://my-gateway.example.com
 HOST = os.environ.get("VERTEX_HOST", "")
+# Per-model location, e.g. MODEL_LOCATIONS="gemini-3.1-pro-preview=global,gemini-3.7-flash=us"
+# Wins over VERTEX_LOCATION; a "location" set on a models.json alias wins over both.
+MODEL_LOCATIONS = dict(
+    (k.strip(), v.strip()) for k, _, v in (x.partition("=") for x in os.environ.get("MODEL_LOCATIONS", "").split(",")) if k.strip() and v.strip())
 
 def _load_models() -> dict:
     """alias -> spec. Built-ins are the two Gemini models; add more in ~/.harness/models.json
@@ -49,8 +53,8 @@ def _load_models() -> dict:
     placeholders in the example file stay inert until you edit them."""
     import json
     models = {
-        "flash": {"provider": "gemini", "model": os.environ.get("GEMINI_FLASH_MODEL", "gemini-3.5-flash")},
-        "pro": {"provider": "gemini", "model": os.environ.get("GEMINI_PRO_MODEL", "gemini-3.6-flash")},
+        "flash": {"provider": "gemini", "model": os.environ.get("GEMINI_FLASH_MODEL", "gemini-3.7-flash")},
+        "pro": {"provider": "gemini", "model": os.environ.get("GEMINI_PRO_MODEL", "gemini-3.1-pro-preview")},
     }
     f = Path(os.environ.get("HARNESS_MODELS_FILE", HOME / "models.json")).expanduser()
     if f.exists():

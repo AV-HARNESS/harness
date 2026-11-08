@@ -40,7 +40,7 @@ def generate(spec: dict, contents: list, system: str, tools, retries: int) -> tu
         project = spec.get("project") or config.PROJECT
         if not project:
             raise RuntimeError("VERTEX_PROJECT is not set (or use a Gemini API key: set GEMINI_API_KEY).")
-        loc = spec.get("location") or config.LOCATION
+        loc = spec.get("location") or config.MODEL_LOCATIONS.get(spec["model"]) or config.LOCATION
         host = spec.get("base_url") or config.HOST or (
             "https://aiplatform.googleapis.com" if loc == "global"
             else f"https://{loc}-aiplatform.googleapis.com")
