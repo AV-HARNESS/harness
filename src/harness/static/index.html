@@ -615,13 +615,15 @@ function stopWave() {
   cancelAnimationFrame(wv.raf); if (wv.stream) wv.stream.getTracks().forEach(t => t.stop());
   if (wv.ctx) wv.ctx.close().catch(() => {}); wv = {raf: 0, stream: null, ctx: null};
 }
+const syncSend = () => { if (running) setSend(!$('in').value.trim()); };  // stop button <-> send arrow while the agent works
 function startListening() {
-  if (!SR || listening || running) return;
+  if (!SR || listening) return;  // allowed while the agent is working: what you say is queued like typed text
   rec = new SR(); rec.lang = lang; rec.continuous = !voiceMode; rec.interimResults = true;
   base = $('in').value ? $('in').value.replace(/\s*$/, ' ') : ''; rec.orig = $('in').value;
   rec.onresult = e => {
     $('in').value = base + Array.from(e.results).map(r => r[0].transcript).join('').trim(); fit();
-    if (voiceMode && e.results[e.results.length - 1].isFinal) { rec.stop(); send(); }
+    syncSend();
+    if (voiceMode && e.results[e.results.length - 1].isFinal) { rec.stop(); Promise.resolve(send()).then(() => { if (voiceMode && running) startListening(); }); }
   };
   rec.onerror = e => { if (e.error === 'not-allowed') alert('Microphone access was blocked for this page.'); stopUi(); };
   rec.onend = stopUi;
@@ -632,7 +634,7 @@ function stopUi() { listening = false; $('mic').classList.remove('listening'); $
 $('dok').onclick = () => { if (!rec) return; rec.stop(); if (voiceMode) setTimeout(send, 250); else $('in').focus(); };
 $('dx').onclick = () => {
   if (!rec) return; const orig = rec.orig; rec.onresult = null; rec.abort(); stopUi();
-  $('in').value = orig; fit();
+  $('in').value = orig; fit(); syncSend();
   if (voiceMode) { voiceMode = false; $('voice').classList.remove('on'); if ('speechSynthesis' in window) speechSynthesis.cancel(); }
 };
 function speak(t) {

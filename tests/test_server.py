@@ -324,3 +324,12 @@ def test_rejected_or_placeholder_keys_hide_the_alias_and_log_is_viewable(client,
     ref = errors.report_ref(RuntimeError("HTTP 401 from x"), "t")[1]
     assert "HTTP 401" in client.get(f"/api/log?ref={ref}").text
     assert client.get("/api/log?ref=../../etc").status_code == 400
+
+
+@covers("R-UI-04")
+def test_voice_is_not_blocked_while_agent_runs(client):
+    html = client.get("/").text
+    start = html.index("function startListening()")
+    guard = html[start:html.index("\n", start + 30)] + html[html.index("\n", start + 30):html.index("\n", html.index("\n", start + 30) + 1)]
+    assert "running" not in guard.split("//")[0]  # no `if (... || running) return`
+    assert "syncSend()" in html and "queueMsg" in html  # dictated text queues like typed text, and the send/stop icon follows
