@@ -377,7 +377,7 @@ async function send(textOverride) {
       else if (e.type === 'leftover') leftover = e.texts;
       else if (e.type === 'usage') setTok(e.prompt_tokens);
       else if (e.type === 'compacted') add('sys', 'Context compacted into a summary.');
-      else if (e.type === 'error') add('err', esc(e.error));
+      else if (e.type === 'error') add('err', esc(e.error) + (e.ref ? ` <a href="/api/log?ref=${e.ref}" target="_blank">View details</a>` : ''));
     }
   }
   running = false; setSend(false); endSteps();
@@ -655,6 +655,10 @@ async function loadModels(mode) {
   let d; try { d = await api('GET', '/api/models' + (mode ? '?' + mode + '=true' : '')); } catch (e) { return; }
   const sel = $('model'), keep = sel.value;
   sel.querySelectorAll('optgroup').forEach(o => o.remove());
+  if (d.configured) {  // aliases the provider rejected drop out of the list once checked
+    [...sel.options].filter(o => !(o.value in d.configured)).forEach(o => o.remove());
+    for (const [k, v] of Object.entries(d.configured)) if (![...sel.options].some(o => o.value === k)) sel.add(new Option(`${k} · ${v.split(':').slice(1).join(':')}`, k));
+  }
   for (const g of d.groups) {
     if (!g.models.length) continue;
     const og = document.createElement('optgroup'); og.label = `${g.source} (${g.provider}) - your access`;
