@@ -1,5 +1,6 @@
 """The agent loop: send history -> run requested tools -> feed results back -> repeat."""
 import threading
+from pathlib import Path
 from typing import Callable
 
 from . import config, llm, store, tools
@@ -13,10 +14,29 @@ BASE_SYSTEM = (
     "architecture or open tasks change, update them with write_block so the next session starts informed."
 )
 MAX_BLOCK, MAX_BLOCKS_TOTAL = 8000, 40000
+GUIDE_FILES = ("AGENTS.md", "CLAUDE.md")
+GUIDE_HOWTO = (
+    "Keep it short and factual: what the project is, how to run/test/build it, folder layout, "
+    "conventions, gotchas and decisions. Never put secrets, tokens or personal data in it.")
+
+
+def _guide_section(root: str) -> str:
+    """The project's own AGENTS.md / CLAUDE.md if it has one; otherwise ask the agent to write AGENTS.md."""
+    for name in GUIDE_FILES:
+        f = Path(root) / name
+        if f.is_file():
+            text = f.read_text(encoding="utf-8", errors="replace")[:MAX_BLOCK]
+            return (f"\n\n### project file: {name} (in the project root)\n{text}\n\n"
+                    f"When you learn something durable about this project that is missing or wrong in {name}, "
+                    f"update it with edit_file. {GUIDE_HOWTO}")
+    return ("\n\n### project guide\nThis project has no AGENTS.md or CLAUDE.md. After you have explored enough to "
+            "know how the project works, create AGENTS.md in the project root with write_file, and keep it "
+            f"updated as you learn more. {GUIDE_HOWTO}")
 
 
 def build_system(project: dict, s: dict) -> str:
     system = BASE_SYSTEM.format(name=project["name"], root=project["root"])
+    system += _guide_section(project["root"])
     used = 0
     for b in store.list_blocks(project["id"]):
         text = store.read_block(project["id"], b["name"])[:MAX_BLOCK]
