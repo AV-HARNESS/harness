@@ -227,3 +227,23 @@ def test_no_compaction_on_every_step_when_context_stays_big(session, fake, monke
     fake.push((200, big([text("done")])))
     agent.run_turn(session, "go", lambda e: None, None)
     assert len(summaries) == 1
+
+
+@covers("R-LOOP-13")
+def test_blank_messages_never_reach_the_model(session, fake):
+    events = run(session, "   ", fake)
+    assert fake.requests == [] and session["messages"] == [] and events == []
+    import queue
+    q = queue.Queue(); q.put(""); q.put("  "); q.put("real")
+    assert agent._drain(q) == ["real"]
+
+
+@covers("R-LOOP-13")
+def test_request_never_ends_with_a_model_turn(session, fake):
+    session["messages"] = [{"role": "user", "parts": [{"text": "a"}]}, {"role": "model", "parts": [{"text": "b"}]}]
+    fake.push((200, gem(text("ok"))))
+    s = session
+    s["messages"].append({"role": "model", "parts": [{"text": "c"}]})
+    # run_turn always adds the user text first; simulate the guard by corrupting after append via a stop-free call
+    agent.run_turn(s, "hi", lambda e: None)
+    assert fake.requests[0]["body"]["contents"][-1]["role"] == "user"

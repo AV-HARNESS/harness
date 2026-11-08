@@ -276,6 +276,8 @@ def queue_message(sid: str, b: Chat):
     """Add a message while the agent is working; it is delivered at the agent's next step."""
     if sid not in _busy:
         raise HTTPException(409, "session is not running; send it as a normal message")
+    if not b.text.strip():
+        raise HTTPException(400, "empty message")
     _inboxes[sid].put(b.text)
     return {"ok": True}
 
