@@ -70,7 +70,7 @@ def test_gemini_api_key_mode_detection(monkeypatch):
 def test_gemini_missing_key_error(monkeypatch):
     monkeypatch.delenv("NOPE_KEY", raising=False)
     monkeypatch.setitem(config.MODELS, "k", {"provider": "gemini", "model": "m", "api_key_env": "NOPE_KEY"})
-    with pytest.raises(RuntimeError, match="API key is not set"):
+    with pytest.raises(RuntimeError, match="NOPE_KEY is not set"):
         providers.generate("k", HIST)
 
 

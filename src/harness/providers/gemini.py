@@ -1,7 +1,7 @@
 """Gemini provider: Vertex AI or Gemini API key."""
 import os
 
-from .. import auth, config
+from .. import auth, config, errors
 from . import _post
 
 
@@ -18,7 +18,7 @@ def gemini_mode(spec: dict) -> str:
 
 def _key(spec: dict) -> str:
     env = spec.get("api_key_env", "")
-    k = os.environ.get(env, "") if env else ""
+    k = os.environ.get(errors.env_name(env), "") if env else ""
     return k or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY", "")
 
 
@@ -32,7 +32,7 @@ def generate(spec: dict, contents: list, system: str, tools, retries: int) -> tu
     if gemini_mode(spec) == "api_key":
         key = _key(spec)
         if not key:
-            raise RuntimeError(f"Gemini API key is not set (env {spec.get('api_key_env') or 'GEMINI_API_KEY'} is not set).")
+            raise errors.ConfigError(f"{spec.get('api_key_env') and errors.env_name(spec['api_key_env']) or 'GEMINI_API_KEY'} is not set. Add it to your .env file and restart the harness.")
         base = spec.get("base_url", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
         url = f"{base}/models/{spec['model']}:generateContent"
         headers = {"x-goog-api-key": key, **spec.get("headers", {})}

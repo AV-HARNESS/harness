@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from . import agent, auth, config, store, tools
+from . import agent, auth, config, errors, store, tools
 
 app = FastAPI(title="Gemini harness")
 store.ensure_default()
@@ -59,9 +59,12 @@ def index():
 @app.get("/api/config")
 def get_config():
     import os
+    from . import discover
     has_api_key = bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
-    return {"models": {k: f"{v.get('provider', 'gemini')}:{v['model']}" for k, v in config.MODELS.items()},
-            "default_model": config.DEFAULT_MODEL, "project": config.PROJECT,
+    ok, hidden = discover.usable_models()  # only aliases whose credentials exist on this machine
+    default = config.DEFAULT_MODEL if config.DEFAULT_MODEL in ok else next(iter(ok), config.DEFAULT_MODEL)
+    return {"models": {k: f"{v.get('provider', 'gemini')}:{v['model']}" for k, v in ok.items()},
+            "hidden_models": hidden, "default_model": default, "project": config.PROJECT,
             "location": config.LOCATION, "logged_in": auth.is_logged_in(),
             "has_api_key": has_api_key, "compact_at": config.COMPACT_AT}
 
@@ -276,7 +279,7 @@ def chat(sid: str, b: Chat):
         try:
             agent.run_turn(s, b.text, q.put, ev, inbox)
         except Exception as e:
-            q.put({"type": "error", "error": f"{type(e).__name__}: {e}"})
+            q.put({"type": "error", "error": errors.report(e, f"chat session={sid} model={s.get('model')}")})
         finally:
             _busy.discard(sid)
             left = agent._drain(inbox)  # queued but never delivered (e.g. stopped): UI sends them next
