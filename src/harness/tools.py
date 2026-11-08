@@ -51,7 +51,7 @@ def _guard(p: Path, writing: str = "") -> str | None:
 def bash(command: str, timeout: int = 120) -> str:
     try:
         r = subprocess.run(command, shell=True, cwd=_root(), capture_output=True,
-                           text=True, timeout=timeout)
+                           text=True, encoding="utf-8", errors="replace", timeout=timeout)
     except subprocess.TimeoutExpired as e:
         return _clip(f"TIMEOUT after {timeout}s\n{e.stdout or ''}{e.stderr or ''}")
     return _clip(f"exit={r.returncode}\n{r.stdout}{('[stderr]' + chr(10) + r.stderr) if r.stderr else ''}")
@@ -60,7 +60,7 @@ def bash(command: str, timeout: int = 120) -> str:
 def read_file(path: str, offset: int = 1, limit: int = 2000) -> str:
     if err := _guard(_p(path)):
         return err
-    lines = _p(path).read_text(errors="replace").splitlines()
+    lines = _p(path).read_text(encoding="utf-8", errors="replace").splitlines()
     chunk = lines[max(offset, 1) - 1: max(offset, 1) - 1 + limit]
     return _clip("\n".join(f"{i}\t{l}" for i, l in enumerate(chunk, max(offset, 1))))
 
@@ -70,7 +70,7 @@ def write_file(path: str, content: str) -> str:
     if err := _guard(p, content):
         return err
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(content)
+    p.write_text(content, encoding="utf-8")
     return f"wrote {len(content)} chars to {p}"
 
 
@@ -78,13 +78,13 @@ def edit_file(path: str, old: str, new: str, replace_all: bool = False) -> str:
     p = _p(path)
     if err := _guard(p, old + new):
         return err
-    text = p.read_text()
+    text = p.read_text(encoding="utf-8")
     n = text.count(old)
     if n == 0:
         return "ERROR: old string not found"
     if n > 1 and not replace_all:
         return f"ERROR: old string appears {n} times; add context or set replace_all"
-    p.write_text(text.replace(old, new) if replace_all else text.replace(old, new, 1))
+    p.write_text(text.replace(old, new) if replace_all else text.replace(old, new, 1), encoding="utf-8")
     return f"edited {p} ({n if replace_all else 1} replacement)"
 
 

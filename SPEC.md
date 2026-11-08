@@ -60,6 +60,7 @@ Change behaviour => change this file and the test in the same commit.
 - **R-TOOL-08** Very long output is clipped in the middle.
 
 - **R-TOOL-09** File tools (read, write, edit, list) work only inside the linked project folder: `..`, absolute paths and symlinks that lead outside are refused (`HARNESS_CONFINE=0` turns this off). `bash` starts in the folder but is not sandboxed.
+- **R-TOOL-10** All files are read and written as UTF-8 regardless of the OS default (emoji and non-English text work on Windows).
 
 ## 6. Privacy (`redact.py`, `tools.py`)
 - **R-PRIV-01** Before any model call, API keys and tokens (Google, OpenAI/Anthropic style, GitHub, AWS, Slack, JWT, private keys, bearer headers) are replaced by `[REDACTED:kind]`.

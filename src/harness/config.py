@@ -58,7 +58,7 @@ def _load_models() -> dict:
     }
     f = Path(os.environ.get("HARNESS_MODELS_FILE", HOME / "models.json")).expanduser()
     if f.exists():
-        for alias, spec in json.loads(f.read_text()).items():
+        for alias, spec in json.loads(f.read_text(encoding="utf-8")).items():
             if alias.startswith("_") or str(spec.get("model", "")).startswith("REPLACE"):
                 continue
             models[alias] = spec

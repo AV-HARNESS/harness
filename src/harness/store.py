@@ -28,7 +28,7 @@ def _write(path: Path, text: str) -> None:
     """Atomic: write a temp file, then swap it in, so a reader never sees a half-written (empty) file."""
     with _lock:
         tmp = path.with_name(f".{path.name}.{threading.get_ident()}.tmp")
-        tmp.write_text(text)
+        tmp.write_text(text, encoding="utf-8")
         for i in range(10):
             try:
                 os.replace(tmp, path)
@@ -42,7 +42,7 @@ def _read_json(path: Path) -> dict:
     """Read JSON; an empty/partial file (a write in flight, or a crash) is retried briefly before failing."""
     for i in range(5):
         try:
-            return json.loads(path.read_text())
+            return json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             if i == 4:
                 raise
@@ -88,7 +88,7 @@ def list_projects() -> list[dict]:
     out = []
     for f in config.PROJECTS_DIR.glob("*/project.json"):
         try:
-            out.append(json.loads(f.read_text()))
+            out.append(json.loads(f.read_text(encoding="utf-8")))
         except Exception:
             pass
     return sorted(out, key=lambda p: p.get("created", 0))
@@ -119,7 +119,7 @@ def ensure_default() -> None:
     if legacy.is_dir():
         for f in legacy.glob("*.json"):
             try:
-                s = json.loads(f.read_text())
+                s = json.loads(f.read_text(encoding="utf-8"))
                 s["project"] = p["id"]
                 _write(config.PROJECTS_DIR / p["id"] / "sessions" / f.name, json.dumps(s, ensure_ascii=False))
             except Exception:
@@ -141,13 +141,13 @@ def read_block(pid: str, name: str) -> str:
     p = _bpath(pid, name)
     if not p.exists():
         raise KeyError(name)
-    return p.read_text()
+    return p.read_text(encoding="utf-8")
 
 
 def write_block(pid: str, name: str, content: str, append: bool = False) -> None:
     p = _bpath(pid, name)
     if append and p.exists():
-        content = p.read_text().rstrip("\n") + "\n" + content
+        content = p.read_text(encoding="utf-8").rstrip("\n") + "\n" + content
     _write(p, content)
 
 
@@ -199,7 +199,7 @@ def list_all(project: str) -> list[dict]:
     out = []
     for p in (_pdir(project) / "sessions").glob("*.json"):
         try:
-            s = json.loads(p.read_text())
+            s = json.loads(p.read_text(encoding="utf-8"))
         except Exception:
             continue
         out.append({k: s.get(k) for k in ("id", "project", "title", "model", "created", "updated", "prompt_tokens")})

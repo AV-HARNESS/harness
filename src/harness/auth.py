@@ -61,7 +61,7 @@ def login(port: int = 0) -> None:
         scopes=config.SCOPES,
     )
     creds = flow.run_local_server(port=port, prompt="consent", access_type="offline")
-    config.TOKEN_FILE.write_text(json.dumps({"refresh_token": creds.refresh_token}))
+    config.TOKEN_FILE.write_text(json.dumps({"refresh_token": creds.refresh_token}), encoding="utf-8")
     config.TOKEN_FILE.chmod(0o600)
     print(f"Saved refresh token to {config.TOKEN_FILE}")
 
@@ -70,7 +70,7 @@ def _refresh_token() -> str:
     if config.REFRESH_TOKEN:
         return config.REFRESH_TOKEN
     if config.TOKEN_FILE.exists():
-        return json.loads(config.TOKEN_FILE.read_text()).get("refresh_token", "")
+        return json.loads(config.TOKEN_FILE.read_text(encoding="utf-8")).get("refresh_token", "")
     return ""
 
 
