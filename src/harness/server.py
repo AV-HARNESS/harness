@@ -67,10 +67,11 @@ def get_config():
 
 
 @app.get("/api/models")
-def models(refresh: bool = False):
-    """Models each configured endpoint offers right now (cached; refresh=true re-queries)."""
+def models(refresh: bool = False, recheck: bool = False):
+    """Models each configured endpoint offers AND your key can actually call (confirmed in the background;
+    poll while `pending` > 0). refresh=true re-lists, recheck=true also forgets earlier access results."""
     from . import discover
-    return {"groups": discover.discover(refresh)}
+    return discover.discover(refresh, recheck)
 
 
 def _proj(pid: str) -> dict:

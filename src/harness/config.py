@@ -44,6 +44,8 @@ LOCATION = os.environ.get("VERTEX_LOCATION", "global")
 HOST = os.environ.get("VERTEX_HOST", "")
 # Per-model location, e.g. MODEL_LOCATIONS="gemini-3.1-pro-preview=global,gemini-3.7-flash=us"
 # Wins over VERTEX_LOCATION; a "location" set on a models.json alias wins over both.
+# Only offer models matching these patterns (comma-separated, * allowed), e.g. HARNESS_MODEL_ALLOW=gpt-4.1*,gemini-3.*
+MODEL_ALLOW = [x.strip() for x in os.environ.get("HARNESS_MODEL_ALLOW", "").split(",") if x.strip()]
 MODEL_LOCATIONS = dict(
     (k.strip(), v.strip()) for k, _, v in (x.partition("=") for x in os.environ.get("MODEL_LOCATIONS", "").split(",")) if k.strip() and v.strip())
 
