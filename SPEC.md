@@ -17,6 +17,7 @@ Change behaviour => change this file and the test in the same commit.
 - **R-LOOP-06** Model "thought" parts are never shown to the user, and are kept verbatim in history (thought signatures survive).
 - **R-LOOP-07** When the prompt exceeds `HARNESS_COMPACT_AT`, older turns are replaced by a summary and the last `HARNESS_KEEP_TURNS` user turns are kept verbatim.
 - **R-LOOP-08** A new session is titled from the first user message; the session is saved after every step.
+- **R-LOOP-10** A message queued while the agent works is delivered at its next step (with the tool results, or as a new user message if the agent was about to finish), and the agent keeps going; if the run is stopped first, the queued messages are handed back to the caller.
 - **R-LOOP-09** A turn that ends in an error leaves the user's message saved in the session.
 
 ## 2. Model providers (`providers/`)
@@ -89,6 +90,7 @@ Change behaviour => change this file and the test in the same commit.
 
 - **R-SRV-07** `GET /api/fs` lists folders (and with `files=1` non-sensitive files) so the UI can link a folder; hidden entries are skipped.
 - **R-SRV-08** With `project=<id>`, `/api/fs` stays inside that project's root (used for attaching files).
+- **R-SRV-10** `POST /api/sessions/<id>/queue` adds a message to a running session (409 if it isn't running); unsent queued messages are returned in a `leftover` event so the UI can send them next.
 - **R-SRV-09** `GET /api/places` returns the picker's sidebar: existing Home/Desktop/Documents/Downloads, the folders of your projects, and drives on Windows.
 - **R-UI-01** The page has the Claude-style composer: a `+` menu (link folder, attach files, instructions, voice language), the model picker, a dictation mic, a voice-mode button and send; a Finder-style folder picker (places sidebar, breadcrumb, back/forward, search, list with dates); a dictation bar with live waveform and cancel (✕) / accept (✓) buttons; and the linked folder shown above the box.
 - **R-UI-03** [manual] In a browser: consecutive tool steps collapse into one summary line ("Read 2 files, ran 1 command") that expands to the individual steps, each with its own output; a text reply ends the group.

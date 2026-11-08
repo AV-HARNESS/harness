@@ -143,6 +143,41 @@ def test_default_step_cap_is_200():
     assert out == "200"
 
 
+@covers("R-LOOP-10")
+def test_queued_message_is_delivered_with_tool_results_and_agent_continues(session, fake, project):
+    import queue
+    inbox = queue.Queue()
+    inbox.put("also add tests")
+    fake.push((200, gem(call("list_dir"))), (200, gem(text("done"))))
+    events = []
+    agent.run_turn(session, "go", events.append, None, inbox)
+    assert {"type": "user", "text": "also add tests"} in events
+    delivered = session["messages"][2]["parts"]
+    assert "functionResponse" in delivered[0] and delivered[-1] == {"text": "also add tests"}
+
+
+@covers("R-LOOP-10")
+def test_queued_message_after_final_answer_starts_another_step(session, fake):
+    import queue
+    inbox = queue.Queue()
+    inbox.put("one more thing")
+    fake.push((200, gem(text("first answer"))), (200, gem(text("second answer"))))
+    events = []
+    agent.run_turn(session, "go", events.append, None, inbox)
+    assert len(fake.requests) == 2 and events[-2]["type"] == "user" or any(e.get("text") == "second answer" for e in events)
+    assert session["messages"][2] == {"role": "user", "parts": [{"text": "one more thing"}]}
+
+
+@covers("R-LOOP-10")
+def test_stopped_run_hands_queued_messages_back(session, fake):
+    import queue
+    inbox = queue.Queue()
+    inbox.put("later")
+    stop = threading.Event()
+    fake.push((200, gem(text("answer"))))
+    stop.set()
+    agent.run_turn(session, "go", lambda e: None, stop, inbox)
+    assert agent._drain(inbox) == ["later"]
 @covers("R-LOOP-11")
 def test_agents_md_is_loaded_or_requested(session, project):
     from pathlib import Path
