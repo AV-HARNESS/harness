@@ -106,6 +106,7 @@ Change behaviour => change this file and the test in the same commit.
 ## 9. Repo hygiene
 - **R-REPO-01** `.gitignore` excludes `.env`, `.harness/`, token files; no such file is tracked.
 - **R-REPO-02** `.env.example` and `models.example.json` contain no real-looking secrets.
+- **R-REPO-04** `scripts/check_secrets.py` (run by the pre-commit and pre-push hooks and in CI) fails on secret-looking text, on `.env`/`token.json`/`models.json` files, and on any term in your private `~/.harness-denylist`; test fixtures are exempt.
 - **R-REPO-03** Every requirement ID above is covered by a test (enforced by `tests/test_spec.py`).
 
 ## Not promised (non-goals)

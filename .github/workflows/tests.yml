@@ -15,4 +15,5 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
       - run: pip install -e ".[dev]"
+      - run: python scripts/check_secrets.py
       - run: pytest
