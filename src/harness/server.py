@@ -290,9 +290,14 @@ def chat(sid: str, b: Chat):
 
 
 def serve(port: int = 8765):
-    import threading, webbrowser, uvicorn
+    import threading, webbrowser, uvicorn, signal, sys
     store.ensure_default()
     url = f"http://127.0.0.1:{port}"
-    print(f"UI: {url}")
+    print(f"UI: {url}  (Ctrl+C to quit)")
     threading.Timer(1.0, lambda: webbrowser.open(url)).start()
+    def _shutdown(sig, frame):
+        print("\nStopping...")
+        sys.exit(0)
+    signal.signal(signal.SIGINT, _shutdown)
+    signal.signal(signal.SIGTERM, _shutdown)
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
