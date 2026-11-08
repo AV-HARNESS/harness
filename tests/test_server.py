@@ -217,21 +217,39 @@ def test_queue_endpoint(client, session):
     server._busy.discard(sid)
 
 
-@covers("R-SRV-11")
-def test_models_endpoint_lists_endpoint_models_and_reports_errors(client, fake, monkeypatch):
+@covers("R-SRV-11", "R-SRV-12")
+def test_models_endpoint_lists_confirms_and_filters(client, fake, monkeypatch):
     from harness import config, discover
     monkeypatch.setattr(config, "MODELS", {
         "oa": {"provider": "openai", "model": "x", "base_url": fake.url, "api_key_env": ""},
         "bad": {"provider": "openai", "model": "y", "base_url": fake.url + "/other", "api_key_env": "NOPE_KEY_X"},
         "vtx": {"provider": "gemini", "model": "gemini-x"}})
-    monkeypatch.delenv("NOPE_KEY_X", raising=False)
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    for k in ("NOPE_KEY_X", "GEMINI_API_KEY", "GOOGLE_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(config, "PROJECT", "p")
+    monkeypatch.setattr(config, "MODEL_ALLOW", ["gpt-*"])
+    monkeypatch.setattr(discover, "_start_probes", lambda: None)  # probe synchronously below
     monkeypatch.setitem(discover._cache, "at", 0.0)
-    fake.push((200, {"data": [{"id": "gpt-b"}, {"id": "gpt-a"}, {"id": "text-embedding-3"}, {"id": "whisper-1"}]}))
-    groups = client.get("/api/models?refresh=true").json()["groups"]
-    by = {g["source"]: g for g in groups}
-    assert [m["alias"] for m in by["oa"]["models"]] == ["oa/gpt-a", "oa/gpt-b"] and by["oa"]["error"] is None
-    assert "NOPE_KEY_X" in by["bad"]["error"] and by["bad"]["models"] == []
-    assert "vtx" not in by  # Vertex cannot be listed
+    status = {"gpt-a": "ok", "gpt-b": "denied", "gpt-c": "unknown", "gpt-d": "ok"}
+    monkeypatch.setattr(discover, "probe", lambda spec, mid: status[mid])
+    fake.push((200, {"data": [{"id": n} for n in ("gpt-d", "gpt-c", "gpt-b", "gpt-a", "text-embedding-3", "whisper-1", "other-model")]}))
+
+    first = client.get("/api/models?refresh=true").json()
+    assert first["pending"] == 4 and all(not g["models"] for g in first["groups"])  # nothing confirmed yet
+    discover.probe_pending()
+    d = client.get("/api/models").json()
+    by = {g["source"]: g for g in d["groups"]}
+    assert d["pending"] == 0
+    assert [(m["alias"], m["status"]) for m in by["oa"]["models"]] == [("oa/gpt-a", "ok"), ("oa/gpt-c", "unverified"), ("oa/gpt-d", "ok")]
+    assert "NOPE_KEY_X" in by["bad"]["error"] and by["bad"]["models"] == [] and "vtx" not in by
+    saved = (config.HOME / "model_access.json").read_text()
+    assert "gpt-a" in saved and "NOPE" not in saved  # cached on disk, key material never stored
+
+
+@covers("R-SRV-12")
+def test_probe_classifies_by_http_status(fake):
+    from harness import discover
+    spec = {"provider": "openai", "model": "m", "base_url": fake.url, "api_key_env": ""}
+    ok = {"choices": [{"message": {"content": "ok"}}], "usage": {}}
+    fake.push((200, ok), (403, "no"), (404, "no"), (401, "no"), (429, "slow"), (400, "bad param"))
+    assert [discover.probe(spec, "m") for _ in range(6)] == ["ok", "denied", "denied", "denied", "unknown", "unknown"]

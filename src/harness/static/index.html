@@ -648,22 +648,25 @@ $('voice').onclick = () => {
   if (voiceMode) startListening(); else { speechSynthesis.cancel(); if (listening) rec.stop(); }
 };
 
-async function loadModels(refresh) {
-  // Lists what each configured endpoint actually offers; the picker keeps your current choice.
-  let d; try { d = await api('GET', '/api/models' + (refresh ? '?refresh=true' : '')); } catch (e) { return; }
+let modelTimer = null;
+async function loadModels(mode) {
+  // Offers only models your key/token can really call. They are confirmed in the background, so poll until done.
+  clearTimeout(modelTimer);
+  let d; try { d = await api('GET', '/api/models' + (mode ? '?' + mode + '=true' : '')); } catch (e) { return; }
   const sel = $('model'), keep = sel.value;
   sel.querySelectorAll('optgroup').forEach(o => o.remove());
   for (const g of d.groups) {
     if (!g.models.length) continue;
-    const og = document.createElement('optgroup'); og.label = `${g.source} (${g.provider}) - available`;
-    g.models.forEach(m => og.appendChild(new Option(m.id, m.alias)));
+    const og = document.createElement('optgroup'); og.label = `${g.source} (${g.provider}) - your access`;
+    g.models.forEach(m => og.appendChild(new Option(m.status === 'ok' ? m.id : m.id + ' (unverified)', m.alias)));
     sel.appendChild(og);
   }
   const bad = d.groups.filter(g => g.error).map(g => g.source + ': ' + g.error);
-  sel.title = bad.length ? 'Could not list models for ' + bad.join(' | ') : 'Model';
+  sel.title = d.pending ? `Checking access to ${d.pending} more model(s)...` : bad.length ? 'Could not list models for ' + bad.join(' | ') : 'Model (double-click to re-check access)';
   if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
+  if (d.pending) modelTimer = setTimeout(() => loadModels(), 2500);
 }
-$('model').ondblclick = () => loadModels(true);
+$('model').ondblclick = () => loadModels('recheck');
 (async () => {
   cfg = await api('GET', '/api/config');
   for (const k of Object.keys(cfg.models)) $('model').add(new Option(`${k} · ${cfg.models[k].split(':').slice(1).join(':')}`, k));
