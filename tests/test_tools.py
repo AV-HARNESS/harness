@@ -3,6 +3,7 @@ import pytest
 
 from harness import config, store, tools
 from conftest import covers
+from pathlib import Path
 
 
 @covers("R-TOOL-01")
@@ -124,3 +125,16 @@ def test_confinement_can_be_switched_off(inproject, tmp_path, monkeypatch):
     (tmp_path / "elsewhere.txt").write_text("hi")
     monkeypatch.setattr(config, "CONFINE", False)
     assert "hi" in tools.run("read_file", {"path": str(tmp_path / "elsewhere.txt")})
+
+
+@covers("R-TOOL-10")
+def test_files_are_utf8_regardless_of_os_default(inproject, monkeypatch):
+    project = inproject
+    import locale
+    monkeypatch.setattr(locale, "getpreferredencoding", lambda *a, **k: "cp1252")
+    txt = "status \U0001f534 done ✓ é"
+    tools.run("write_file", dict(path="u.md", content=txt))
+    assert (Path(project["root"]) / "u.md").read_bytes() == txt.encode("utf-8")
+    assert txt in tools.run("read_file", dict(path="u.md"))
+    tools.run("edit_file", dict(path="u.md", old="done", new="ok \U0001f7e2"))
+    assert "\U0001f7e2" in tools.run("read_file", dict(path="u.md"))
