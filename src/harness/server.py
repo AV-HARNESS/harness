@@ -16,6 +16,7 @@ store.ensure_default()
 STATIC = Path(__file__).parent / "static"
 _stops: dict[str, threading.Event] = {}
 _busy: set[str] = set()
+_inboxes: dict[str, queue.Queue] = {}
 
 
 class ProjectIn(BaseModel):
@@ -242,6 +243,15 @@ def compact(sid: str):
     return {"compacted": agent.compact(s)}
 
 
+@app.post("/api/sessions/{sid}/queue")
+def queue_message(sid: str, b: Chat):
+    """Add a message while the agent is working; it is delivered at the agent's next step."""
+    if sid not in _busy:
+        raise HTTPException(409, "session is not running; send it as a normal message")
+    _inboxes[sid].put(b.text)
+    return {"ok": True}
+
+
 @app.post("/api/sessions/{sid}/chat")
 def chat(sid: str, b: Chat):
     s = _get(sid)
@@ -251,15 +261,19 @@ def chat(sid: str, b: Chat):
         s["model"] = b.model
     q: queue.Queue = queue.Queue()
     ev = _stops[sid] = threading.Event()
+    inbox = _inboxes[sid] = queue.Queue()
     _busy.add(sid)
 
     def worker():
         try:
-            agent.run_turn(s, b.text, q.put, ev)
+            agent.run_turn(s, b.text, q.put, ev, inbox)
         except Exception as e:
             q.put({"type": "error", "error": f"{type(e).__name__}: {e}"})
         finally:
             _busy.discard(sid)
+            left = agent._drain(inbox)  # queued but never delivered (e.g. stopped): UI sends them next
+            if left:
+                q.put({"type": "leftover", "texts": left})
             q.put({"type": "done"})
 
     threading.Thread(target=worker, daemon=True).start()

@@ -145,6 +145,10 @@
   .dict canvas { position:absolute; inset:0; width:100%; height:100%; }
   .composer.dictating .crow > :not(.dict) { display:none !important; } .composer.dictating .dict { display:flex; }
   #dx { color:var(--mute); } #dx:hover { color:var(--accent); border-color:var(--accent); }
+  .queued { display:flex; flex-direction:column; gap:6px; padding-bottom:8px; }
+  .qitem { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted,#6b6b66); background:rgba(0,0,0,.04); border-radius:10px; padding:6px 10px; }
+  .qitem span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .qitem button { border:0; background:none; color:inherit; cursor:pointer; font-size:12px; text-decoration:underline; }
   .chips { display:flex; flex-wrap:wrap; gap:6px; padding-bottom:8px; }
   .chip { background:var(--panel); border-radius:8px; padding:3px 9px; font-size:12px; display:flex; gap:7px; align-items:center; }
   .chip b { cursor:pointer; color:var(--mute); font-weight:400; display:grid; } .chip b .i { width:12px; height:12px; }
@@ -195,6 +199,7 @@
     <div id="folder"><svg class="i "><use href="#i-folder"/></svg><span id="froot"></span><button id="fchange">Change</button></div>
     <div class="composer" id="composer">
       <div class="chips" id="chips" hidden></div>
+      <div class="queued" id="queued" hidden></div>
       <textarea id="in" rows="1" placeholder="Message (Enter to send, Shift+Enter for newline)"></textarea>
       <div class="crow">
         <button id="plus" class="ic" title="Add: link a folder, attach files, instructions"><svg class="i "><use href="#i-plus"/></svg></button>
@@ -238,7 +243,7 @@
 </dialog>
 <script>
 const $ = id => document.getElementById(id);
-let cur = null, cfg = {}, running = false, proj = null, projects = [];
+let cur = null, cfg = {}, running = false, queued = [], proj = null, projects = [];
 
 const api = async (m, url, body) => {
   const r = await fetch(url, {method:m, headers:{'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : undefined});
@@ -336,12 +341,24 @@ async function newSession() {
   const s = await api('POST', '/api/sessions', {project: proj.id, model: $('model').value || proj.model});
   await open(s.id);
 }
-async function send() {
-  let text = $('in').value.trim(); if (!text || running) return;
+function drawQueued() {
+  const q = $('queued'); q.hidden = !queued.length;
+  q.innerHTML = queued.map(t => `<div class="qitem"><span>Queued: ${esc(t)}</span><button data-send-now>Send now</button></div>`).join('');
+  q.querySelectorAll('[data-send-now]').forEach(b => b.onclick = () => api('POST', `/api/sessions/${cur.id}/stop`));
+}
+async function queueMsg(text) {
+  $('in').value = ''; $('in').style.height = 'auto';
+  const r = await fetch(`/api/sessions/${cur.id}/queue`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text})});
+  setSend(true);
+  if (r.ok) { queued.push(text); drawQueued(); } else add('err', esc(await r.text()));
+}
+async function send(textOverride) {
+  let text = (textOverride || $('in').value).trim(); if (!text) return;
+  if (running) return queueMsg(text);
   if (files.length) { text = 'Attached files (read them with read_file):\n' + files.map(f => '- ' + f).join('\n') + '\n\n' + text; files = []; drawChips(); }
   if (!cur) await newSession();
   $('in').value = ''; $('in').style.height = 'auto';
-  add('user', md(text)); running = true; setSend(true); lastTool = null;
+  add('user', md(text)); running = true; setSend(true); lastTool = null; let leftover = [];
   const r = await fetch(`/api/sessions/${cur.id}/chat`, {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({text, model: $('model').value})});
   if (!r.ok) { add('err', esc(await r.text())); running = false; setSend(false); return; }
@@ -356,6 +373,8 @@ async function send() {
       if (e.type === 'text') { add('', md(e.text)); spoken += ' ' + e.text; }
       else if (e.type === 'tool_call') toolCall(e.name, e.args);
       else if (e.type === 'tool_result') toolResult(e.output);
+      else if (e.type === 'user') { const i = queued.indexOf(e.text); if (i >= 0) queued.splice(i, 1); drawQueued(); add('user', md(e.text)); }
+      else if (e.type === 'leftover') leftover = e.texts;
       else if (e.type === 'usage') setTok(e.prompt_tokens);
       else if (e.type === 'compacted') add('sys', 'Context compacted into a summary.');
       else if (e.type === 'error') add('err', esc(e.error));
@@ -363,13 +382,16 @@ async function send() {
   }
   running = false; setSend(false); endSteps();
   if (voiceMode) speak(spoken); spoken = '';
+  queued = []; drawQueued();
   cur = await api('GET', '/api/sessions/' + cur.id); $('title').value = cur.title; loadList();
+  if (leftover.length) send(leftover.join('\n\n'));
 }
 
-$('send').onclick = () => { if ('speechSynthesis' in window) speechSynthesis.cancel(); running ? api('POST', `/api/sessions/${cur.id}/stop`) : send(); };
+$('send').onclick = () => { if ('speechSynthesis' in window) speechSynthesis.cancel(); running && !$('in').value.trim() ? api('POST', `/api/sessions/${cur.id}/stop`) : send(); };
 $('new').onclick = newSession;
 $('in').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } };
-$('in').oninput = e => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; };
+$('in').oninput = e => { if (running) setSend(!e.target.value.trim());
+   e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; };
 $('title').onchange = async () => { if (cur) { await api('PATCH', '/api/sessions/' + cur.id, {title: $('title').value}); loadList(); } };
 $('instr').onchange = async () => { if (cur) await api('PATCH', '/api/sessions/' + cur.id, {instructions: $('instr').value}); };
 $('model').onchange = async () => { if (cur) await api('PATCH', '/api/sessions/' + cur.id, {model: $('model').value}); loadList(); };

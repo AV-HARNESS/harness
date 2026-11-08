@@ -203,3 +203,15 @@ def test_places_for_the_folder_picker(client, tmp_path, monkeypatch):
     assert d["favorites"][1]["path"] == str(home / "Desktop")
     assert {"name": "work", "path": str((tmp_path / "work").resolve()), "project": "W"} in d["projects"]
     assert d["sep"] and isinstance(d["drives"], list)
+
+
+@covers("R-SRV-10")
+def test_queue_endpoint(client, session):
+    import queue
+    sid = session["id"]
+    assert client.post(f"/api/sessions/{sid}/queue", json={"text": "x"}).status_code == 409
+    server._busy.add(sid)
+    server._inboxes[sid] = queue.Queue()
+    assert client.post(f"/api/sessions/{sid}/queue", json={"text": "next"}).status_code == 200
+    assert server._inboxes[sid].get_nowait() == "next"
+    server._busy.discard(sid)

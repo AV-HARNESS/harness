@@ -64,7 +64,18 @@ def compact(s: dict, emit: Emit = lambda e: None) -> bool:
     return True
 
 
-def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None) -> None:
+def _drain(inbox) -> list[str]:
+    """Messages the user queued while the agent was working."""
+    out = []
+    while inbox is not None:
+        try:
+            out.append(inbox.get_nowait())
+        except Exception:
+            break
+    return out
+
+
+def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None, inbox=None) -> None:
     project = store.get_project(s["project"])
     tools.PROJECT.set(project)
     s["messages"].append({"role": "user", "parts": [{"text": text}]})
@@ -92,7 +103,17 @@ def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None
                 calls.append(p["functionCall"])
         emit({"type": "usage", "prompt_tokens": s["prompt_tokens"]})
         if not calls:
-            break
+            queued = _drain(inbox)  # user typed more while this answer was being produced: keep going
+            if not queued or (stop and stop.is_set()):
+                if queued:
+                    for t in queued:
+                        inbox.put(t)  # stopped: hand them back to the caller
+                break
+            for t in queued:
+                emit({"type": "user", "text": t})
+            s["messages"].append({"role": "user", "parts": [{"text": t} for t in queued]})
+            store.save(s)
+            continue
         results = []
         for c in calls:
             emit({"type": "tool_call", "name": c["name"], "args": c.get("args", {})})
@@ -102,7 +123,10 @@ def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None
             # Full output was already emitted to the UI above.
             stored = out if len(out) <= config.HISTORY_TOOL_TRIM else out[:config.HISTORY_TOOL_TRIM] + f"\n... [trimmed in history; {len(out)} chars total]"
             results.append({"functionResponse": {"name": c["name"], "response": {"output": stored}}})
-        s["messages"].append({"role": "user", "parts": results})
+        queued = [] if (stop and stop.is_set()) else _drain(inbox)  # delivered with the tool results
+        for t in queued:
+            emit({"type": "user", "text": t})
+        s["messages"].append({"role": "user", "parts": results + [{"text": t} for t in queued]})
         store.save(s)
     else:
         emit({"type": "text", "text": f"(stopped after {config.MAX_STEPS} steps; say 'continue' to go on)"})
