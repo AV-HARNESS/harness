@@ -243,7 +243,14 @@
 </dialog>
 <script>
 const $ = id => document.getElementById(id);
-let cur = null, cfg = {}, running = false, queued = [], proj = null, projects = [];
+let cur = null, cfg = {}, proj = null, projects = [];
+// Run and queue state is kept PER SESSION (never global), and a stream only paints while its own session is the one on screen,
+// so switching sessions or having several tabs open can never mix one chat into another.
+const runningSids = new Set(), queuedBy = {}, stash = {};
+const isRunning = () => !!cur && (runningSids.has(cur.id) || !!cur.running);
+const queuedNow = () => (cur ? (queuedBy[cur.id] ||= []) : []);
+let openTok = 0, pollTimer = null;
+const setHash = () => { try { history.replaceState(null, '', '#p=' + encodeURIComponent(proj ? proj.id : '') + (cur ? '&s=' + cur.id : '')); } catch (e) {} };
 
 const api = async (m, url, body) => {
   const r = await fetch(url, {method:m, headers:{'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : undefined});
@@ -335,37 +342,57 @@ async function loadList() {
   }
 }
 async function open(id) {
-  cur = await api('GET', '/api/sessions/' + id);
-  $('msgs').innerHTML = ''; lastTool = null; grp = null;
-  cur.messages.forEach(render); endSteps();
+  const t = ++openTok;
+  const s = await api('GET', '/api/sessions/' + id);
+  if (t !== openTok) return;  // a newer click won: never paint an older answer over it
+  clearTimeout(pollTimer); cur = s;
+  paint();
   $('title').value = cur.title; $('model').value = cur.model; $('instr').value = cur.instructions || '';
-  setTok(cur.prompt_tokens); loadList();
+  setTok(cur.prompt_tokens); setSend(isRunning()); drawQueued(); setHash(); loadList();
+  if (stash[id]) { $('in').value = stash[id]; delete stash[id]; }
+  if (cur.running && !runningSids.has(id)) watch(id);  // running here in another tab or earlier: follow it live
+}
+function paint() { $('msgs').innerHTML = ''; lastTool = null; grp = null; pend = []; cur.messages.forEach(render); endSteps(); }
+function watch(id) {
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(async () => {
+    if (!cur || cur.id !== id) return;
+    let s; try { s = await api('GET', '/api/sessions/' + id); } catch (e) { return; }
+    if (!cur || cur.id !== id) return;
+    const changed = s.messages.length !== cur.messages.length;
+    cur = s; if (changed) paint();
+    setTok(cur.prompt_tokens);
+    if (s.running) watch(id); else { setSend(false); $('title').value = cur.title; loadList(); }
+  }, 1500);
 }
 async function newSession() {
   const s = await api('POST', '/api/sessions', {project: proj.id, model: $('model').value || proj.model});
   await open(s.id);
 }
 function drawQueued() {
-  const q = $('queued'); q.hidden = !queued.length;
-  q.innerHTML = queued.map(t => `<div class="qitem"><span>Queued: ${esc(t)}</span><button data-send-now>Send now</button></div>`).join('');
+  const qs = queuedNow(), q = $('queued'); q.hidden = !qs.length;
+  q.innerHTML = qs.map(t => `<div class="qitem"><span>Queued: ${esc(t)}</span><button data-send-now>Send now</button></div>`).join('');
   q.querySelectorAll('[data-send-now]').forEach(b => b.onclick = () => api('POST', `/api/sessions/${cur.id}/stop`));
 }
 async function queueMsg(text) {
   $('in').value = ''; $('in').style.height = 'auto';
-  const r = await fetch(`/api/sessions/${cur.id}/queue`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text})});
-  setSend(true);
-  if (r.ok) { queued.push(text); drawQueued(); } else add('err', esc(await r.text()));
+  const sid = cur.id;
+  const r = await fetch(`/api/sessions/${sid}/queue`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({text})});
+  if (cur && cur.id === sid) setSend(true);
+  if (r.ok) { (queuedBy[sid] ||= []).push(text); if (cur && cur.id === sid) drawQueued(); }
+  else if (cur && cur.id === sid) add('err', esc(await r.text()));
 }
 async function send(textOverride) {
   let text = (textOverride || $('in').value).trim(); if (!text) return;
-  if (running) return queueMsg(text);
+  if (isRunning()) return queueMsg(text);
   if (files.length) { text = 'Attached files (read them with read_file):\n' + files.map(f => '- ' + f).join('\n') + '\n\n' + text; files = []; drawChips(); }
   if (!cur) await newSession();
+  const sid = cur.id, here = () => !!cur && cur.id === sid;  // paint only while THIS session is the one on screen
   $('in').value = ''; $('in').style.height = 'auto';
-  add('user', md(text)); running = true; setSend(true); lastTool = null; let leftover = [];
-  const r = await fetch(`/api/sessions/${cur.id}/chat`, {method:'POST', headers:{'Content-Type':'application/json'},
+  add('user', md(text)); runningSids.add(sid); setSend(true); lastTool = null; let leftover = [], spoken = '';
+  const r = await fetch(`/api/sessions/${sid}/chat`, {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({text, model: $('model').value})});
-  if (!r.ok) { add('err', esc(await r.text())); running = false; setSend(false); return; }
+  if (!r.ok) { runningSids.delete(sid); if (here()) { add('err', esc(await r.text())); setSend(false); } return; }
   const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '';
   while (true) {
     const {value, done} = await rd.read(); if (done) break;
@@ -374,28 +401,33 @@ async function send(textOverride) {
       const line = buf.slice(0, i); buf = buf.slice(i + 2);
       if (!line.startsWith('data: ')) continue;
       const e = JSON.parse(line.slice(6));
+      if (e.type === 'leftover') { leftover = e.texts; continue; }
+      if (e.type === 'user') { const q = queuedBy[sid] || [], k = q.indexOf(e.text); if (k >= 0) q.splice(k, 1); }
+      if (!here()) continue;  // another session is on screen now: the server keeps this one's history; it reloads when you return
       if (e.type === 'text') { add('', md(e.text)); spoken += ' ' + e.text; }
       else if (e.type === 'tool_call') toolCall(e.name, e.args);
       else if (e.type === 'tool_result') toolResult(e.output);
-      else if (e.type === 'user') { const i = queued.indexOf(e.text); if (i >= 0) queued.splice(i, 1); drawQueued(); add('user', md(e.text)); }
-      else if (e.type === 'leftover') leftover = e.texts;
+      else if (e.type === 'user') { drawQueued(); add('user', md(e.text)); }
       else if (e.type === 'notice') { add('sys', esc(e.text)); if ([...$('model').options].some(o => o.value === e.model)) $('model').value = e.model; }
       else if (e.type === 'usage') setTok(e.prompt_tokens);
       else if (e.type === 'compacted') add('sys', 'Context compacted into a summary.');
       else if (e.type === 'error') add('err', esc(e.error) + (e.ref ? ` <a href="/api/log?ref=${e.ref}" target="_blank">View details</a>` : ''));
     }
   }
-  running = false; setSend(false); endSteps();
-  if (voiceMode) speak(spoken); spoken = '';
-  queued = []; drawQueued();
-  cur = await api('GET', '/api/sessions/' + cur.id); $('title').value = cur.title; loadList();
-  if (leftover.length) send(leftover.join('\n\n'));
+  runningSids.delete(sid); queuedBy[sid] = [];
+  if (here()) {
+    setSend(false); endSteps(); drawQueued();
+    cur = await api('GET', '/api/sessions/' + sid); if (here()) $('title').value = cur.title;
+    if (voiceMode) speak(spoken);
+  }
+  loadList();
+  if (leftover.length) { if (here()) send(leftover.join('\n\n')); else stash[sid] = leftover.join('\n\n'); }
 }
 
-$('send').onclick = () => { if ('speechSynthesis' in window) speechSynthesis.cancel(); running && !$('in').value.trim() ? api('POST', `/api/sessions/${cur.id}/stop`) : send(); };
+$('send').onclick = () => { if ('speechSynthesis' in window) speechSynthesis.cancel(); isRunning() && !$('in').value.trim() ? api('POST', `/api/sessions/${cur.id}/stop`) : send(); };
 $('new').onclick = newSession;
 $('in').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } };
-$('in').oninput = e => { if (running) setSend(!e.target.value.trim());
+$('in').oninput = e => { if (isRunning()) setSend(!e.target.value.trim());
    e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; };
 $('title').onchange = async () => { if (cur) { await api('PATCH', '/api/sessions/' + cur.id, {title: $('title').value}); loadList(); } };
 $('instr').onchange = async () => { if (cur) await api('PATCH', '/api/sessions/' + cur.id, {instructions: $('instr').value}); };
@@ -419,9 +451,12 @@ function editBlock(name, content) {
 }
 async function loadProjects(select) {
   projects = await api('GET', '/api/projects');
-  await switchProject(select || (() => { try { return localStorage.getItem('proj'); } catch (e) { return null; } })());
+  // Each tab remembers its own project+session in the URL hash; localStorage only seeds a brand-new tab.
+  const h = new URLSearchParams(location.hash.slice(1));
+  await switchProject(select || h.get('p') || (() => { try { return localStorage.getItem('proj'); } catch (e) { return null; } })(), select ? null : h.get('s'));
 }
-async function switchProject(id) {
+async function switchProject(id, sid) {
+  ++openTok; clearTimeout(pollTimer);
   proj = projects.find(p => p.id === id) || projects[0]; drawProj();
   try { localStorage.setItem('proj', proj.id); } catch (e) {}
   $('froot').textContent = proj.root;
@@ -429,7 +464,9 @@ async function switchProject(id) {
   cur = null; files = []; drawChips(); $('msgs').innerHTML = ''; setTok(0); $('title').value = ''; $('instr').value = '';
   await loadBlocks();
   const ss = await api('GET', '/api/sessions?project=' + proj.id);
-  await loadList(); if (ss.length) open(ss[0].id);
+  await loadList();
+  const pick = ss.find(x => x.id === sid) || ss[0];
+  if (pick) open(pick.id); else { setSend(false); setHash(); }
 }
 const HUES = ['#1f7a78', '#3d7ab8', '#7a6bb0', '#b5763a', '#5b7fb5', '#a35b7e', '#6c8f4e'];
 const hue = n => HUES[[...n].reduce((a, c) => a + c.charCodeAt(0), 0) % HUES.length];
@@ -626,7 +663,7 @@ function stopWave() {
   cancelAnimationFrame(wv.raf); if (wv.stream) wv.stream.getTracks().forEach(t => t.stop());
   if (wv.ctx) wv.ctx.close().catch(() => {}); wv = {raf: 0, stream: null, ctx: null};
 }
-const syncSend = () => { if (running) setSend(!$('in').value.trim()); };  // stop button <-> send arrow while the agent works
+const syncSend = () => { if (isRunning()) setSend(!$('in').value.trim()); };  // stop button <-> send arrow while the agent works
 function startListening() {
   if (!SR || listening) return;  // allowed while the agent is working: what you say is queued like typed text
   rec = new SR(); rec.lang = lang; rec.continuous = !voiceMode; rec.interimResults = true;
@@ -634,7 +671,7 @@ function startListening() {
   rec.onresult = e => {
     $('in').value = base + Array.from(e.results).map(r => r[0].transcript).join('').trim(); fit();
     syncSend();
-    if (voiceMode && e.results[e.results.length - 1].isFinal) { rec.stop(); Promise.resolve(send()).then(() => { if (voiceMode && running) startListening(); }); }
+    if (voiceMode && e.results[e.results.length - 1].isFinal) { rec.stop(); Promise.resolve(send()).then(() => { if (voiceMode && isRunning()) startListening(); }); }
   };
   rec.onerror = e => { if (e.error === 'not-allowed') alert('Microphone access was blocked for this page.'); stopUi(); };
   rec.onend = stopUi;
