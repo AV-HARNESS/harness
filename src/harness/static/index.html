@@ -321,6 +321,10 @@ async function loadList() {
     const d = document.createElement('div'); d.className = 's' + (cur && cur.id === s.id ? ' on' : '');
     d.innerHTML = `<div class="t">${esc(s.title)}</div><div class="m">${esc(s.model || '')} &middot; ${ago(s.updated)}</div><button class="x" title="Delete">${SVG('x')}</button>`;
     d.onclick = () => open(s.id);
+    d.querySelector('.t').ondblclick = async e => {  // double-click a session title to rename it
+      e.stopPropagation(); const n = prompt('Rename session', s.title);
+      if (n && n.trim() && n !== s.title) { await api('PATCH', '/api/sessions/' + s.id, {title: n.trim()}); if (cur && cur.id === s.id) $('title').value = n.trim(); loadList(); }
+    };
     d.querySelector('.x').onclick = async e => {
       e.stopPropagation(); if (!confirm('Delete this session?')) return;
       await api('DELETE', '/api/sessions/' + s.id);
@@ -435,9 +439,9 @@ function drawProj() {
   $('pav').outerHTML = avatar(proj).replace('class="av"', 'class="av" id="pav"');
   $('pname').textContent = proj.name; $('rootp').textContent = proj.root; $('projbtn').title = proj.root;
   $('projmenu').innerHTML = projects.map(p => `<button class="pi2" data-id="${esc(p.id)}">${avatar(p)}<span class="pt"><b>${esc(p.name)}</b><small>${esc(short(p.root))}</small></span>${p.id === proj.id ? SVG('check') : ''}</button>`).join('')
-    + `<hr><button class="act" id="pnew">${SVG('plus')}New project&hellip;</button><button class="act" id="pedit">${SVG('folder')}Change project folder&hellip;</button>`;
+    + `<hr><button class="act" id="pnew">${SVG('plus')}New project&hellip;</button><button class="act" id="prename">${SVG('folder')}Rename project&hellip;</button><button class="act" id="pedit">${SVG('folder')}Change project folder&hellip;</button>`;
   $('projmenu').querySelectorAll('.pi2').forEach(b => b.onclick = () => { $('projmenu').hidden = true; switchProject(b.dataset.id); });
-  $('pnew').onclick = newProject; $('pedit').onclick = changeFolder;
+  $('pnew').onclick = newProject; $('pedit').onclick = changeFolder; $('prename').onclick = renameProject;
 }
 $('projbtn').onclick = e => { e.stopPropagation(); $('projmenu').hidden = !$('projmenu').hidden; };
 async function newProject() {
@@ -445,6 +449,12 @@ async function newProject() {
   const name = prompt('Project name'); if (!name) return;
   const root = await pickFolder('link', proj ? proj.root : ''); if (!root) return;
   try { const p = await api('POST', '/api/projects', {name, root}); await loadProjects(p.id); } catch (e) { alert(e.message); }
+}
+async function renameProject() {
+  $('projmenu').hidden = true;
+  const name = prompt('Rename project', proj.name);
+  if (name && name.trim() && name !== proj.name) {
+    try { await api('PATCH', '/api/projects/' + proj.id, {name: name.trim()}); await loadProjects(proj.id); } catch (e) { alert(e.message); } }
 }
 async function changeFolder() {
   $('menu').hidden = true; $('projmenu').hidden = true;
