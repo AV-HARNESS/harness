@@ -662,7 +662,7 @@ async function loadModels(mode) {
   for (const g of d.groups) {
     if (!g.models.length) continue;
     const og = document.createElement('optgroup'); og.label = `${g.source} (${g.provider}) - your access`;
-    g.models.forEach(m => og.appendChild(new Option(m.status === 'ok' ? m.id : m.id + ' (unverified)', m.alias)));
+    g.models.forEach(m => og.appendChild(new Option(m.status === 'ok' ? m.id : m.id + (m.status === 'checking' ? ' (checking...)' : ' (unverified)'), m.alias)));
     sel.appendChild(og);
   }
   const bad = d.groups.filter(g => g.error).map(g => g.source + ': ' + g.error);

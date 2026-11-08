@@ -235,7 +235,8 @@ def test_models_endpoint_lists_confirms_and_filters(client, fake, monkeypatch):
     fake.push((200, {"data": [{"id": n} for n in ("gpt-d", "gpt-c", "gpt-b", "gpt-a", "text-embedding-3", "whisper-1", "other-model")]}))
 
     first = client.get("/api/models?refresh=true").json()
-    assert first["pending"] == 5 and all(not g["models"] for g in first["groups"])  # nothing confirmed yet
+    assert first["pending"] == 5  # not confirmed yet: listed right away as "checking", not hidden until the end
+    assert {m["status"] for g in first["groups"] for m in g["models"]} == {"checking"}
     discover.probe_pending()
     d = client.get("/api/models").json()
     by = {g["source"]: g for g in d["groups"]}

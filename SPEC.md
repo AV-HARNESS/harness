@@ -32,6 +32,7 @@ Change behaviour => change this file and the test in the same commit.
 - **R-PROV-08** History is provider-neutral (Gemini format): the same session can continue on a different provider.
 - **R-PROV-10** Vertex location is chosen per model: alias `location`, else `MODEL_LOCATIONS` entry for that model, else `VERTEX_LOCATION`.
 - **R-PROV-11** A model alias of the form `source/model-id` means the configured alias `source` with that model id, so any model an endpoint offers can be used without editing `models.json`.
+- **R-PROV-12** Keys come only from `.env`: built-in `openai`/`claude`/`flash`/`pro` aliases use whichever provider keys are set (so every provider you have a key for appears); a `models.json` entry without `api_key_env` uses its provider's standard key variable, and an entry holding a pasted key is ignored with a warning.
 - **R-PROV-09** `models.json` adds aliases; entries whose model starts with `REPLACE` or alias starts with `_` are ignored.
 
 ## 3. Auth (`auth.py`)
