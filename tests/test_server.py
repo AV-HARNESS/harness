@@ -241,7 +241,7 @@ def test_models_endpoint_lists_confirms_and_filters(client, fake, monkeypatch):
     by = {g["source"]: g for g in d["groups"]}
     assert d["pending"] == 0
     assert [(m["alias"], m["status"]) for m in by["oa"]["models"]] == [("oa/gpt-a", "ok"), ("oa/gpt-c", "unverified"), ("oa/gpt-d", "ok")]
-    assert "NOPE_KEY_X" in by["bad"]["error"] and by["bad"]["models"] == [] and "vtx" not in by
+    assert "bad" not in by and "vtx" not in by  # no key / cannot be listed: not even queried
     saved = (config.HOME / "model_access.json").read_text()
     assert "gpt-a" in saved and "NOPE" not in saved  # cached on disk, key material never stored
 
@@ -253,3 +253,53 @@ def test_probe_classifies_by_http_status(fake):
     ok = {"choices": [{"message": {"content": "ok"}}], "usage": {}}
     fake.push((200, ok), (403, "no"), (404, "no"), (401, "no"), (429, "slow"), (400, "bad param"))
     assert [discover.probe(spec, "m") for _ in range(6)] == ["ok", "denied", "denied", "denied", "unknown", "unknown"]
+
+
+@covers("R-SRV-13")
+def test_config_lists_only_usable_models(client, monkeypatch):
+    from harness import config
+    monkeypatch.setattr(config, "MODELS", {
+        "flash": {"provider": "gemini", "model": "gf"},
+        "oa": {"provider": "openai", "model": "gpt-x", "api_key_env": "OA_KEY_T"},
+        "oa-nokey": {"provider": "openai", "model": "gpt-y", "api_key_env": "OA_MISSING_T"},
+        "claude": {"provider": "anthropic", "model": "c", "api_key_env": "ANT_MISSING_T"},
+        "local": {"provider": "openai", "model": "l", "base_url": "http://localhost:1/v1", "api_key_env": ""}})
+    monkeypatch.setattr(config, "PROJECT", "")  # no Vertex project, so 'flash' cannot run
+    monkeypatch.setattr(config, "DEFAULT_MODEL", "flash")
+    for k in ("OA_MISSING_T", "ANT_MISSING_T", "GEMINI_API_KEY", "GOOGLE_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("OA_KEY_T", "sk-test")
+    d = client.get("/api/config").json()
+    assert set(d["models"]) == {"oa", "local"}
+    assert d["default_model"] == "oa"  # 'flash' is unusable, so fall back to the first usable alias
+    assert "OA_MISSING_T" in d["hidden_models"]["oa-nokey"] and "flash" in d["hidden_models"]
+    assert "sk-test" not in str(d)
+
+
+@covers("R-SRV-14")
+def test_errors_are_friendly_on_screen_and_detailed_in_the_log(client, session, fake, monkeypatch):
+    from harness import config, errors
+    monkeypatch.setattr(errors, "_log", None)
+    monkeypatch.setitem(config.MODELS, "oa", {"provider": "openai", "model": "m", "base_url": fake.url, "api_key_env": ""})
+    s = client.post("/api/sessions", json={"project": session["project"], "model": "oa"}).json()
+    fake.push((401, '{"error":{"message":"Incorrect API key provided: sk-proj-SECRETSECRETSECRET1234567890"}}'))
+    body = client.post(f"/api/sessions/{s['id']}/chat", json={"text": "hi"}).text
+    assert "rejected your API key" in body and "ref " in body
+    assert "Incorrect API key" not in body and "SECRETSECRET" not in body and "RuntimeError" not in body
+    log = (config.HOME / "harness.log").read_text(encoding="utf-8")
+    assert "HTTP 401" in log and "SECRETSECRET" not in log  # detail is in the log, secrets masked
+
+
+@covers("R-SRV-14")
+def test_pasted_key_as_env_name_is_never_echoed(client, session, monkeypatch):
+    from harness import errors
+    monkeypatch.setattr(errors, "_log", None)
+    from harness import config
+    key = "sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    monkeypatch.setitem(config.MODELS, "oa", {"provider": "openai", "model": "m", "api_key_env": key})
+    d = client.get("/api/config").json()
+    assert "oa" not in d["models"] and key not in str(d) and "NAME" in d["hidden_models"]["oa"]
+    s = client.post("/api/sessions", json={"project": session["project"], "model": "oa"}).json()
+    body = client.post(f"/api/sessions/{s['id']}/chat", json={"text": "hi"}).text
+    assert key not in body and "rotate" in body
+    assert key not in (config.HOME / "harness.log").read_text(encoding="utf-8")

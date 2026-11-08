@@ -18,7 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
-from . import config
+from . import config, errors
 from .providers.gemini import gemini_mode
 
 TTL = 600            # how long a model list is reused
@@ -45,11 +45,11 @@ def _chat_capable(mid: str) -> bool:
 
 def _list(spec: dict) -> list[str]:
     provider = spec.get("provider", "gemini")
-    env = spec.get("api_key_env", "")
+    env = errors.env_name(spec["api_key_env"]) if spec.get("api_key_env") else ""
     key = os.environ.get(env, "") if env else ""
     if provider == "openai":
         if env and not key:
-            raise RuntimeError(f"{env} is not set")
+            raise errors.ConfigError(f"{env} is not set")
         base = spec.get("base_url", "https://api.openai.com/v1").rstrip("/")
         h = {"Authorization": f"Bearer {key}"} if key else {}
         data = _get(f"{base}/models", {**h, **spec.get("headers", {})})
@@ -149,10 +149,41 @@ def _allowed(mid: str) -> bool:
     return not config.MODEL_ALLOW or any(fnmatch.fnmatch(mid, p) for p in config.MODEL_ALLOW)
 
 
+def usable(spec: dict) -> tuple[bool, str]:
+    """Is this alias configured well enough to even try? (credentials present; says what is missing if not)"""
+    from . import auth
+    provider = spec.get("provider", "gemini")
+    env = spec.get("api_key_env", "")
+    if env and not errors.ENV_NAME.match(env):  # a pasted key: never echo it
+        return False, "api_key_env must be an environment variable NAME, not the key itself"
+    if provider in ("openai", "anthropic"):
+        if provider == "anthropic" and not env:
+            return False, "api_key_env is not set in models.json"
+        return (True, "") if not env or os.environ.get(env) else (False, f"{env} is not set")
+    if gemini_mode(spec) == "api_key":
+        ok = (os.environ.get(env) if env else "") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        return (True, "") if ok else (False, f"{env or 'GEMINI_API_KEY'} is not set")
+    if not (spec.get("project") or config.PROJECT):
+        return False, "VERTEX_PROJECT is not set"
+    return (True, "") if auth.is_logged_in() else (False, "not logged in to Vertex")
+
+
+def usable_models() -> tuple[dict, dict]:
+    """(usable aliases -> spec, hidden alias -> reason) for what this machine's environment can actually run."""
+    ok, hidden = {}, {}
+    for alias, spec in config.MODELS.items():
+        good, why = usable(spec)
+        if good:
+            ok[alias] = spec
+        else:
+            hidden[alias] = why
+    return ok, hidden
+
+
 def _sources() -> dict:
     """One entry per distinct endpoint: (provider, base_url, key env) -> first alias using it."""
     out: dict = {}
-    for alias, spec in config.MODELS.items():
+    for alias, spec in usable_models()[0].items():
         provider = spec.get("provider", "gemini")
         if provider == "gemini" and gemini_mode(spec) != "api_key":
             continue  # Vertex: cannot be listed

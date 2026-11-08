@@ -7,7 +7,7 @@ except ImportError:
 import threading
 from pathlib import Path
 
-from . import agent, auth, config, store
+from . import agent, auth, config, errors, store
 
 DIM, CYAN, YEL, RED, RST = "\033[2m", "\033[36m", "\033[33m", "\033[31m", "\033[0m"
 
@@ -137,7 +137,7 @@ def chat(resume: str | None = None, project: str | None = None) -> None:
                 else:
                     print(HELP)
             except (KeyError, ValueError) as e:
-                print(f"{RED}error: {e}{RST}")
+                print(f"{RED}{errors.report(e, 'cli')}{RST}")
             continue
         stop = threading.Event()
         try:

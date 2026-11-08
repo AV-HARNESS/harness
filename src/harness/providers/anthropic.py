@@ -1,16 +1,18 @@
 """Anthropic Messages API provider."""
 import os
 
+from .. import errors
+
 from . import _post, _declarations, _lower_types, _text, _result_text
 
 
 def _key(spec: dict) -> str:
     env = spec.get("api_key_env", "")
     if not env:
-        raise RuntimeError(f"api_key_env is required for Anthropic models (model '{spec['model']}').")
-    k = os.environ.get(env, "")
+        raise errors.ConfigError("api_key_env is required for Anthropic models in models.json (the NAME of the env var that holds the key).")
+    k = os.environ.get(errors.env_name(env), "")
     if not k:
-        raise RuntimeError(f"Environment variable {env} is not set (needed for model '{spec['model']}').")
+        raise errors.ConfigError(f"{env} is not set. Add it to your .env file and restart the harness.")
     return k
 
 
