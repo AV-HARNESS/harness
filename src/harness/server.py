@@ -2,11 +2,12 @@
 import json
 import os
 import queue
+import re
 import threading
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 from . import agent, auth, config, errors, store, tools
@@ -61,12 +62,21 @@ def get_config():
     import os
     from . import discover
     has_api_key = bool(os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"))
-    ok, hidden = discover.usable_models()  # only aliases whose credentials exist on this machine
+    discover._start_probes()  # confirm in the background that each configured key really works
+    ok, hidden = discover.usable_models()  # only aliases with credentials that the provider has not rejected
     default = config.DEFAULT_MODEL if config.DEFAULT_MODEL in ok else next(iter(ok), config.DEFAULT_MODEL)
     return {"models": {k: f"{v.get('provider', 'gemini')}:{v['model']}" for k, v in ok.items()},
             "hidden_models": hidden, "default_model": default, "project": config.PROJECT,
             "location": config.LOCATION, "logged_in": auth.is_logged_in(),
             "has_api_key": has_api_key, "compact_at": config.COMPACT_AT}
+
+
+@app.get("/api/log", response_class=PlainTextResponse)
+def log(ref: str = "", tail: int = 200):
+    """The harness log (this server only listens on 127.0.0.1). ?ref=abc123 shows just that error."""
+    if ref and not re.fullmatch(r"[0-9a-f]{6}", ref):
+        raise HTTPException(400, "bad reference")
+    return errors.log_lines(ref, min(max(tail, 1), 2000))
 
 
 @app.get("/api/models")
@@ -277,9 +287,16 @@ def chat(sid: str, b: Chat):
 
     def worker():
         try:
+            from . import discover
+            _, hidden = discover.usable_models()
+            m = s.get("model", "")
+            why = hidden.get(m) or hidden.get(m.split("/")[0] if m not in config.MODELS else "")
+            if why:
+                raise errors.ConfigError(f"The model '{m}' isn't available on this machine ({why}). Pick another model from the list.")
             agent.run_turn(s, b.text, q.put, ev, inbox)
         except Exception as e:
-            q.put({"type": "error", "error": errors.report(e, f"chat session={sid} model={s.get('model')}")})
+            msg, ref = errors.report_ref(e, f"chat session={sid} model={s.get('model')}")
+            q.put({"type": "error", "error": msg, "ref": ref})
         finally:
             _busy.discard(sid)
             left = agent._drain(inbox)  # queued but never delivered (e.g. stopped): UI sends them next
@@ -304,7 +321,7 @@ def serve(port: int = 8765):
     import threading, webbrowser, uvicorn, signal, sys
     store.ensure_default()
     url = f"http://127.0.0.1:{port}"
-    print(f"UI: {url}  (Ctrl+C to quit)")
+    print(f"UI: {url}  (Ctrl+C to quit)\nData folder: {config.HOME}\nLog (errors also print here): {config.HOME / 'harness.log'}   view: {url}/api/log")
     threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     def _shutdown(sig, frame):
         print("\nStopping...")

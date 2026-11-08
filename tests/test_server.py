@@ -230,12 +230,12 @@ def test_models_endpoint_lists_confirms_and_filters(client, fake, monkeypatch):
     monkeypatch.setattr(config, "MODEL_ALLOW", ["gpt-*"])
     monkeypatch.setattr(discover, "_start_probes", lambda: None)  # probe synchronously below
     monkeypatch.setitem(discover._cache, "at", 0.0)
-    status = {"gpt-a": "ok", "gpt-b": "denied", "gpt-c": "unknown", "gpt-d": "ok"}
+    status = {"x": "ok", "gpt-a": "ok", "gpt-b": "denied", "gpt-c": "unknown", "gpt-d": "ok"}  # "x" is the configured alias itself
     monkeypatch.setattr(discover, "probe", lambda spec, mid: status[mid])
     fake.push((200, {"data": [{"id": n} for n in ("gpt-d", "gpt-c", "gpt-b", "gpt-a", "text-embedding-3", "whisper-1", "other-model")]}))
 
     first = client.get("/api/models?refresh=true").json()
-    assert first["pending"] == 4 and all(not g["models"] for g in first["groups"])  # nothing confirmed yet
+    assert first["pending"] == 5 and all(not g["models"] for g in first["groups"])  # nothing confirmed yet
     discover.probe_pending()
     d = client.get("/api/models").json()
     by = {g["source"]: g for g in d["groups"]}
@@ -303,3 +303,23 @@ def test_pasted_key_as_env_name_is_never_echoed(client, session, monkeypatch):
     body = client.post(f"/api/sessions/{s['id']}/chat", json={"text": "hi"}).text
     assert key not in body and "rotate" in body
     assert key not in (config.HOME / "harness.log").read_text(encoding="utf-8")
+
+
+@covers("R-SRV-14")
+def test_rejected_or_placeholder_keys_hide_the_alias_and_log_is_viewable(client, session, monkeypatch):
+    from harness import config, discover, errors
+    monkeypatch.setattr(config, "MODELS", {
+        "oa": {"provider": "openai", "model": "gpt-x", "api_key_env": "OA_T"},
+        "claude": {"provider": "anthropic", "model": "c", "api_key_env": "ANT_T"},
+        "ph": {"provider": "openai", "model": "p", "api_key_env": "PH_T"}})
+    monkeypatch.setenv("OA_T", "sk-real-looking-key-123")
+    monkeypatch.setenv("ANT_T", "sk-ant-wrong-but-set-456")   # set, but the provider will reject it
+    monkeypatch.setenv("PH_T", "sk-REPLACE-ME")                # copied placeholder: counts as not set
+    monkeypatch.setattr(discover, "probe", lambda spec, mid: "denied" if spec["provider"] == "anthropic" else "ok")
+    assert set(client.get("/api/config").json()["models"]) == {"oa", "claude"}  # before the probe: both look fine
+    discover.probe_pending()
+    d = client.get("/api/config").json()
+    assert set(d["models"]) == {"oa"} and "rejected" in d["hidden_models"]["claude"] and "PH_T" in d["hidden_models"]["ph"]
+    ref = errors.report_ref(RuntimeError("HTTP 401 from x"), "t")[1]
+    assert "HTTP 401" in client.get(f"/api/log?ref={ref}").text
+    assert client.get("/api/log?ref=../../etc").status_code == 400

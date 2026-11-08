@@ -13,6 +13,14 @@ ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 _log: logging.Logger | None = None
 
 
+_PLACEHOLDER = re.compile(r"replace|your[-_ ]|xxxx|changeme|<.*>|\.\.\.$", re.I)
+
+
+def is_set(value: str | None) -> bool:
+    """True for a real-looking value; empty or a copied placeholder (sk-REPLACE-ME, your-key-here) counts as not set."""
+    return bool(value and value.strip() and not _PLACEHOLDER.search(value))
+
+
 class ConfigError(RuntimeError):
     """A setup problem. The message is written for the user and is safe to show as is."""
 
@@ -30,6 +38,7 @@ def logger() -> logging.Logger:
     global _log
     if _log is None:
         _log = logging.getLogger("harness")
+        _log.handlers.clear()
         _log.setLevel(logging.INFO)
         try:
             h = RotatingFileHandler(config.HOME / "harness.log", maxBytes=1_000_000, backupCount=3, encoding="utf-8")
@@ -37,6 +46,9 @@ def logger() -> logging.Logger:
             _log.addHandler(h)
         except OSError:
             pass
+        term = logging.StreamHandler()  # also print in the terminal where `serve` / the CLI runs
+        term.setFormatter(logging.Formatter("[harness] %(levelname)s %(message)s"))
+        _log.addHandler(term)
     return _log
 
 
@@ -76,9 +88,25 @@ def friendly(e: BaseException) -> str:
     return "Something went wrong."
 
 
-def report(e: BaseException, context: str = "") -> str:
-    """Log everything, return a short message with a reference id the user can look up in the log."""
+def report_ref(e: BaseException, context: str = "") -> tuple[str, str]:
+    """Log everything; return (short on-screen message, reference id)."""
     ref = uuid.uuid4().hex[:6]
-    logger().error("[%s] %s %s: %s", ref, context, type(e).__name__, _safe(str(e)), exc_info=False)
+    logger().error("[%s] %s %s: %s", ref, context, type(e).__name__, _safe(str(e)))
     logger().debug("[%s] traceback", ref, exc_info=e)
-    return f"{friendly(e)} (ref {ref}, details in {config.HOME / 'harness.log'})"
+    return f"{friendly(e)} (ref {ref})", ref
+
+
+def report(e: BaseException, context: str = "") -> str:
+    msg, _ = report_ref(e, context)
+    return f"{msg[:-1]}, details in {config.HOME / 'harness.log'})"
+
+
+def log_lines(ref: str = "", tail: int = 200) -> str:
+    """Log text for the UI: lines for one reference id, or the last `tail` lines."""
+    try:
+        lines = (config.HOME / "harness.log").read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return "(no log yet)"
+    if ref:
+        lines = [l for l in lines if f"[{ref}]" in l]
+    return "\n".join(lines[-tail:]) or "(nothing logged for that reference)"

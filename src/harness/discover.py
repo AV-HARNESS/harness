@@ -71,7 +71,7 @@ def _list(spec: dict) -> list[str]:
 def _fingerprint(spec: dict) -> str:
     env = spec.get("api_key_env", "")
     key = (os.environ.get(env, "") if env else "") or os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")
-    raw = f"{spec.get('provider', 'gemini')}|{spec.get('base_url', '')}|{key}"
+    raw = f"{spec.get('provider', 'gemini')}|{spec.get('base_url', '') or config.HOST}|{spec.get('project') or config.PROJECT}|{key}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
@@ -118,18 +118,23 @@ def probe_pending() -> None:
     try:
         todo = []
         access = _load_access()
+        for alias, spec in credentialed_models()[0].items():  # your configured aliases are checked too
+            fp = _fingerprint(spec)
+            if not _fresh(access.get(fp, {}).get(spec["model"])):
+                todo.append((alias, fp, spec["model"], spec))
         for g in _cache["groups"]:
             fp = _fingerprint(config.MODELS[g["source"]])
             for m in g["models"][:MAX_PROBES]:
                 if not _fresh(access.get(fp, {}).get(m["id"])):
-                    todo.append((g["source"], fp, m["id"]))
+                    todo.append((g["source"], fp, m["id"], config.MODELS[g["source"]]))
         if not todo:
             return
         with ThreadPoolExecutor(4) as ex:
-            results = list(ex.map(lambda t: (t, probe(config.MODELS[t[0]], t[2])), todo))
+            uniq = list({(t[1], t[2]): t for t in todo}.values())  # one probe per endpoint+model
+            results = list(ex.map(lambda t: (t, probe(t[3], t[2])), uniq))
         with _lock:
             access = _load_access()
-            for (_, fp, mid), status in results:
+            for (_, fp, mid, _spec), status in results:
                 access.setdefault(fp, {})[mid] = {"status": status, "at": time.time()}
             _save_access(access)
     finally:
@@ -155,21 +160,21 @@ def usable(spec: dict) -> tuple[bool, str]:
     provider = spec.get("provider", "gemini")
     env = spec.get("api_key_env", "")
     if env and not errors.ENV_NAME.match(env):  # a pasted key: never echo it
-        return False, "api_key_env must be an environment variable NAME, not the key itself"
+        return False, "api_key_env must be an environment variable NAME, not the key itself (rotate that key)"
     if provider in ("openai", "anthropic"):
         if provider == "anthropic" and not env:
             return False, "api_key_env is not set in models.json"
-        return (True, "") if not env or os.environ.get(env) else (False, f"{env} is not set")
+        return (True, "") if not env or errors.is_set(os.environ.get(env)) else (False, f"{env} is not set")
     if gemini_mode(spec) == "api_key":
-        ok = (os.environ.get(env) if env else "") or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+        ok = [v for v in ((os.environ.get(env) if env else ""), os.environ.get("GEMINI_API_KEY"), os.environ.get("GOOGLE_API_KEY")) if errors.is_set(v)]
         return (True, "") if ok else (False, f"{env or 'GEMINI_API_KEY'} is not set")
     if not (spec.get("project") or config.PROJECT):
         return False, "VERTEX_PROJECT is not set"
     return (True, "") if auth.is_logged_in() else (False, "not logged in to Vertex")
 
 
-def usable_models() -> tuple[dict, dict]:
-    """(usable aliases -> spec, hidden alias -> reason) for what this machine's environment can actually run."""
+def credentialed_models() -> tuple[dict, dict]:
+    """(aliases with credentials present -> spec, the rest -> reason)."""
     ok, hidden = {}, {}
     for alias, spec in config.MODELS.items():
         good, why = usable(spec)
@@ -177,6 +182,19 @@ def usable_models() -> tuple[dict, dict]:
             ok[alias] = spec
         else:
             hidden[alias] = why
+    return ok, hidden
+
+
+def usable_models() -> tuple[dict, dict]:
+    """(usable aliases -> spec, hidden alias -> reason): credentials present AND not found to be rejected by the
+    provider (a key that is set but wrong or not entitled to the model is detected by the background probe)."""
+    ok, hidden = credentialed_models()
+    access = _load_access()
+    for alias in list(ok):
+        e = access.get(_fingerprint(ok[alias]), {}).get(ok[alias]["model"])
+        if e and e["status"] == "denied" and _fresh(e):
+            hidden[alias] = "the provider rejected this key or model"
+            del ok[alias]
     return ok, hidden
 
 
@@ -218,6 +236,10 @@ def discover(refresh: bool = False, recheck: bool = False, background: bool = Tr
         _start_probes()
     access = _load_access()
     groups, pending = [], 0
+    ok, _ = usable_models()
+    for spec in ok.values():  # configured aliases not yet checked
+        if not _fresh(access.get(_fingerprint(spec), {}).get(spec["model"])):
+            pending += 1
     for g in lists:
         fp = _fingerprint(config.MODELS[g["source"]])
         out = {**g, "models": []}
@@ -230,4 +252,5 @@ def discover(refresh: bool = False, recheck: bool = False, background: bool = Tr
             elif e["status"] == "unknown":
                 out["models"].append({**m, "status": "unverified"})
         groups.append(out)
-    return {"groups": groups, "pending": pending}
+    return {"groups": groups, "pending": pending,
+            "configured": {k: f"{v.get('provider', 'gemini')}:{v['model']}" for k, v in ok.items()}}

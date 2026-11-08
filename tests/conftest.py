@@ -49,6 +49,12 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "_busy", set())
     monkeypatch.setattr(server, "_stops", {})
     monkeypatch.setattr("time.sleep", lambda s: None)  # retry backoff must not slow the suite
+    from harness import discover, errors
+    monkeypatch.setattr(discover, "_start_probes", lambda: None)  # no background network probes; tests call probe_pending()
+    monkeypatch.setitem(discover._cache, "at", 0.0)
+    monkeypatch.setitem(discover._cache, "groups", [])
+    monkeypatch.setattr(errors, "_log", None)
+    monkeypatch.setattr("os.environ", dict(__import__("os").environ, HARNESS_MODEL_ALLOW=""))
     yield
 
 
