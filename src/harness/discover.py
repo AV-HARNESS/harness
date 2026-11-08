@@ -24,7 +24,7 @@ from .providers.gemini import gemini_mode
 TTL = 600            # how long a model list is reused
 ACCESS_TTL = 86400   # how long ok/denied probe results are trusted
 RETRY_TTL = 600      # how long before an inconclusive probe is retried
-MAX_PROBES = 80      # per endpoint, so a huge catalogue cannot cause a flood of calls
+MAX_PROBES = 60      # per endpoint, so a huge catalogue cannot cause a flood of calls
 _cache: dict = {"at": 0.0, "groups": []}
 _lock = threading.Lock()
 _probing = False
@@ -39,7 +39,12 @@ def _get(url: str, headers: dict, params: dict | None = None) -> dict:
     return r.json()
 
 
+_SNAPSHOT = re.compile(r"-(\d{4}-\d{2}-\d{2}|\d{4}|\d{8})$")  # gpt-4o-2024-08-06, claude-x-20250929: dated duplicates
+
+
 def _chat_capable(mid: str) -> bool:
+    if os.environ.get("HARNESS_SHOW_SNAPSHOTS") != "1" and _SNAPSHOT.search(mid):
+        return False
     return not any(w in mid.lower() for w in _SKIP)
 
 
@@ -129,7 +134,7 @@ def probe_pending() -> None:
                     todo.append((g["source"], fp, m["id"], config.MODELS[g["source"]]))
         if not todo:
             return
-        with ThreadPoolExecutor(4) as ex:
+        with ThreadPoolExecutor(8) as ex:
             uniq = list({(t[1], t[2]): t for t in todo}.values())  # one probe per endpoint+model
             results = list(ex.map(lambda t: (t, probe(t[3], t[2])), uniq))
         with _lock:
@@ -227,7 +232,7 @@ def _lists(refresh: bool) -> list[dict]:
 
 def discover(refresh: bool = False, recheck: bool = False, background: bool = True) -> dict:
     """{groups: [{source, provider, error, models: [{alias, id, status}]}], pending: n}
-    status is 'ok' (confirmed) or 'unverified' (probe inconclusive); denied and not-yet-probed models are left out."""
+    status is 'ok' (confirmed), 'checking' (probe running) or 'unverified' (inconclusive); models the provider rejected are left out."""
     if recheck:
         with _lock:
             _save_access({})
@@ -247,6 +252,7 @@ def discover(refresh: bool = False, recheck: bool = False, background: bool = Tr
             e = access.get(fp, {}).get(m["id"])
             if not e or (e["status"] == "unknown" and not _fresh(e)):
                 pending += 1
+                out["models"].append({**m, "status": "checking"})  # visible right away; dropped if the check says no
             elif e["status"] == "ok":
                 out["models"].append({**m, "status": "ok"})
             elif e["status"] == "unknown":

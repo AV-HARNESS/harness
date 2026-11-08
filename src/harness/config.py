@@ -49,20 +49,42 @@ MODEL_ALLOW = [x.strip() for x in os.environ.get("HARNESS_MODEL_ALLOW", "").spli
 MODEL_LOCATIONS = dict(
     (k.strip(), v.strip()) for k, _, v in (x.partition("=") for x in os.environ.get("MODEL_LOCATIONS", "").split(",")) if k.strip() and v.strip())
 
+_ENV_NAME = __import__("re").compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
+_DEFAULT_KEY_ENV = {"openai": "OPENAI_API_KEY", "anthropic": "ANTHROPIC_API_KEY", "gemini": ""}
+
+
 def _load_models() -> dict:
-    """alias -> spec. Built-ins are the two Gemini models; add more in ~/.harness/models.json
-    (see models.example.json). Entries whose model starts with REPLACE are ignored, so the
-    placeholders in the example file stay inert until you edit them."""
+    """alias -> spec. Keys live ONLY in .env (never in models.json): the built-in aliases pick up whichever of
+    OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY (or a Vertex login) is set, and the model picker shows
+    every provider you have a key for. models.json is optional and only adds or overrides aliases (base_url,
+    project, location, headers...); an alias without api_key_env uses that provider's standard key variable.
+    Entries whose model starts with REPLACE are ignored, so the placeholders in the example file stay inert."""
     import json
+    import sys
     models = {
         "flash": {"provider": "gemini", "model": os.environ.get("GEMINI_FLASH_MODEL", "gemini-3.7-flash")},
         "pro": {"provider": "gemini", "model": os.environ.get("GEMINI_PRO_MODEL", "gemini-3.1-pro-preview")},
+        "openai": {"provider": "openai", "model": os.environ.get("OPENAI_MODEL", "gpt-4.1"),
+                   "base_url": os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"), "api_key_env": "OPENAI_API_KEY"},
+        "claude": {"provider": "anthropic", "model": os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5"),
+                   "api_key_env": "ANTHROPIC_API_KEY"},
     }
     f = Path(os.environ.get("HARNESS_MODELS_FILE", HOME / "models.json")).expanduser()
     if f.exists():
         for alias, spec in json.loads(f.read_text(encoding="utf-8")).items():
             if alias.startswith("_") or str(spec.get("model", "")).startswith("REPLACE"):
                 continue
+            env = spec.get("api_key_env")
+            if env and not _ENV_NAME.match(env):  # a real key pasted into models.json: never use or print it
+                print(f"[harness] models.json: '{alias}' has a key where an environment variable NAME belongs; "
+                      f"ignoring that entry. Put the key in .env (e.g. OPENAI_API_KEY=...) and rotate the pasted one.",
+                      file=sys.stderr)
+                continue
+            if not env:  # standard key variable for the provider, unless it points at a custom server
+                provider = spec.get("provider", "gemini")
+                custom = spec.get("base_url") and "api.openai.com" not in spec["base_url"] and "anthropic.com" not in spec["base_url"]
+                if not custom and _DEFAULT_KEY_ENV.get(provider):
+                    spec = {**spec, "api_key_env": _DEFAULT_KEY_ENV[provider]}
             models[alias] = spec
     return models
 

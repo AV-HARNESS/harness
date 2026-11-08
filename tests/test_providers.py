@@ -234,7 +234,7 @@ def test_shipped_example_models_file_is_valid_and_placeholders_inert(monkeypatch
         if alias.startswith("_"):
             continue
         assert spec["provider"] in ("gemini", "openai", "anthropic")
-        assert (alias in models) == (not spec["model"].startswith("REPLACE"))
+        assert (alias in models) == (not spec["model"].startswith("REPLACE"))  # placeholders stay inert
         assert not any(k in spec for k in ("api_key", "token", "secret"))  # keys come from env vars only
 
 
@@ -264,3 +264,36 @@ def test_source_slash_model_alias(fake, monkeypatch):
     fake.push((200, {"choices": [{"message": {"content": "hi"}}], "usage": {}}))
     providers.generate("oa/gpt-x", HIST)
     assert fake.requests[0]["body"]["model"] == "gpt-x"
+
+
+@covers("R-PROV-12")
+def test_keys_come_from_env_only(tmp_path, monkeypatch):
+    import json
+    f = tmp_path / "models.json"
+    pasted = "sk-proj-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    f.write_text(json.dumps({
+        "openai": {"provider": "openai", "model": "gpt-9", "base_url": "https://api.openai.com/v1", "api_key_env": pasted},
+        "mine": {"provider": "openai", "model": "gpt-8", "base_url": "https://api.openai.com/v1"},
+        "ollama": {"provider": "openai", "model": "llama", "base_url": "http://localhost:11434/v1"},
+        "c2": {"provider": "anthropic", "model": "claude-x"}}), encoding="utf-8")
+    monkeypatch.setenv("HARNESS_MODELS_FILE", str(f))
+    models = config._load_models()
+    assert models["openai"]["api_key_env"] == "OPENAI_API_KEY" and models["openai"]["model"] != "gpt-9"  # pasted entry ignored
+    assert models["mine"]["api_key_env"] == "OPENAI_API_KEY" and models["c2"]["api_key_env"] == "ANTHROPIC_API_KEY"
+    assert models["ollama"].get("api_key_env", "") == ""  # custom server: no key needed
+    assert models["claude"]["api_key_env"] == "ANTHROPIC_API_KEY" and {"flash", "pro"} <= set(models)
+    assert pasted not in str(models)
+
+
+@covers("R-PROV-12")
+def test_only_providers_with_a_key_show_up(monkeypatch):
+    from harness import discover
+    models = config._load_models()
+    monkeypatch.setattr(config, "MODELS", models)
+    monkeypatch.setattr(config, "PROJECT", "")
+    for k in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-real-looking-1234567890")
+    assert set(discover.usable_models()[0]) == {"openai"}
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-real-looking-1234567890")
+    assert set(discover.usable_models()[0]) == {"openai", "claude"}  # both keys set: both providers shown

@@ -1,5 +1,5 @@
 {
-  "_readme": "Copy to ~/.harness/models.json and edit. Each key is a model alias you can pick in the UI/CLI. provider: gemini (Vertex login, or API key via api_key_env) | openai (any OpenAI-compatible /chat/completions API) | anthropic. Entries whose model starts with REPLACE are ignored until you edit them.",
+  "_readme": "OPTIONAL. Keys never go here: put them in .env (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY) and the built-in aliases use whichever are set. Use this file only to add or override aliases. Copy to ~/.harness/models.json and edit. Each key is a model alias you can pick in the UI/CLI. provider: gemini (Vertex login, or API key via api_key_env) | openai (any OpenAI-compatible /chat/completions API) | anthropic. Entries whose model starts with REPLACE are ignored until you edit them.",
   "gemini-key": {
     "provider": "gemini",
     "model": "gemini-2.5-flash",
@@ -17,7 +17,7 @@
     "api_key_env": "ANTHROPIC_API_KEY",
     "max_tokens": 8192
   },
-  "openai": {
+  "my-openai-compatible": {
     "provider": "openai",
     "model": "REPLACE-WITH-MODEL-ID",
     "base_url": "https://api.openai.com/v1",
