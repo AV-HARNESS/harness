@@ -37,3 +37,18 @@ def test_example_files_hold_no_secrets():
         if name == ".env.example":
             assert live == [], f"uncommented values in {name}: {live}"
         assert redact.mask(text) == text, f"{name} contains something that looks like a secret"
+
+
+@covers("R-REPO-04")
+def test_check_secrets_script(tmp_path, monkeypatch):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("check_secrets", ROOT / "scripts" / "check_secrets.py")
+    cs = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cs)
+    assert cs.scan(tracked(), []) == []  # the repo itself is clean
+    monkeypatch.setattr(cs, "ROOT", tmp_path)
+    (tmp_path / "a.py").write_text("key = 'AIzaSyA1234567890abcdefghijklmnopqrstuv'\n", encoding="utf-8")
+    (tmp_path / "b.md").write_text("gateway is corp-internal.example\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("X=1\n", encoding="utf-8")
+    out = cs.scan(["a.py", "b.md", ".env"], ["corp-internal"])
+    assert any("a.py:1" in p for p in out) and any("b.md:1" in p for p in out) and any(".env" in p for p in out)
