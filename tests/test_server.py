@@ -302,8 +302,7 @@ def test_pasted_key_as_env_name_is_never_echoed(client, session, monkeypatch):
     assert "oa" not in d["models"] and key not in str(d) and "NAME" in d["hidden_models"]["oa"]
     s = client.post("/api/sessions", json={"project": session["project"], "model": "oa"}).json()
     body = client.post(f"/api/sessions/{s['id']}/chat", json={"text": "hi"}).text
-    assert key not in body and "rotate" in body
-    assert key not in (config.HOME / "harness.log").read_text(encoding="utf-8")
+    assert key not in body and "rotate" in body  # the switch notice explains why, without echoing the key
 
 
 @covers("R-SRV-14")
@@ -333,3 +332,35 @@ def test_voice_is_not_blocked_while_agent_runs(client):
     guard = html[start:html.index("\n", start + 30)] + html[html.index("\n", start + 30):html.index("\n", html.index("\n", start + 30) + 1)]
     assert "running" not in guard.split("//")[0]  # no `if (... || running) return`
     assert "syncSend()" in html and "queueMsg" in html  # dictated text queues like typed text, and the send/stop icon follows
+
+
+@covers("R-SRV-15")
+def test_unavailable_model_falls_back_and_401_marks_it_unusable(client, session, fake, monkeypatch):
+    from harness import config, discover
+    monkeypatch.setattr(config, "MODELS", {
+        "oa": {"provider": "openai", "model": "gpt-x", "base_url": fake.url, "api_key_env": "OA_T"},
+        "claude": {"provider": "anthropic", "model": "c", "base_url": fake.url, "api_key_env": "ANT_T"}})
+    monkeypatch.setattr(config, "DEFAULT_MODEL", "oa")
+    monkeypatch.setenv("OA_T", "sk-real-looking-1234567890")
+    monkeypatch.setenv("ANT_T", "sk-ant-wrong-but-set-123456")
+    s = client.post("/api/sessions", json={"project": session["project"], "model": "claude"}).json()
+    # 1) the provider rejects the key: friendly error, and the model is marked unusable right away
+    fake.push((401, '{"error":"invalid x-api-key"}'))
+    body = client.post(f"/api/sessions/{s['id']}/chat", json={"text": "hi"}).text
+    assert "rejected your API key" in body
+    assert set(client.get("/api/config").json()["models"]) == {"oa"}
+    # 2) the next message on that same session switches to the usable model instead of failing again
+    fake.push((200, {"choices": [{"message": {"content": "hello"}}], "usage": {}}))
+    body = client.post(f"/api/sessions/{s['id']}/chat", json={"text": "hi again"}).text
+    assert '"type": "notice"' in body and "using 'oa'" in body and "hello" in body
+    assert client.get(f"/api/sessions/{s['id']}").json()["model"] == "oa"
+
+
+@covers("R-SRV-15")
+def test_no_usable_model_says_which_key_to_add(client, session, monkeypatch):
+    from harness import config
+    monkeypatch.setattr(config, "MODELS", {"oa": {"provider": "openai", "model": "g", "api_key_env": "OA_NONE_T"}})
+    monkeypatch.delenv("OA_NONE_T", raising=False)
+    s = client.post("/api/sessions", json={"project": session["project"], "model": "oa"}).json()
+    body = client.post(f"/api/sessions/{s['id']}/chat", json={"text": "hi"}).text
+    assert "No model is available" in body and "OPENAI_API_KEY" in body

@@ -285,16 +285,28 @@ def chat(sid: str, b: Chat):
     inbox = _inboxes[sid] = queue.Queue()
     _busy.add(sid)
 
+    from . import discover
+
     def worker():
         try:
-            from . import discover
             _, hidden = discover.usable_models()
             m = s.get("model", "")
-            why = hidden.get(m) or hidden.get(m.split("/")[0] if m not in config.MODELS else "")
-            if why:
-                raise errors.ConfigError(f"The model '{m}' isn't available on this machine ({why}). Pick another model from the list.")
+            base = m if m in config.MODELS else m.split("/")[0]
+            if base in hidden:  # e.g. the session was on 'claude' but only an OpenAI key is set: switch, don't fail
+                alt = discover.fallback_model()
+                if not alt:
+                    raise errors.ConfigError("No model is available on this machine (" + "; ".join(f"{k}: {v}" for k, v in hidden.items())
+                                             + "). Add an API key (OPENAI_API_KEY, GEMINI_API_KEY or ANTHROPIC_API_KEY) to your .env and restart.")
+                q.put({"type": "notice", "model": alt,
+                       "text": f"'{m}' isn't available here ({hidden[base]}); using '{alt}' instead."})
+                s["model"] = alt
+                store.save(s)
             agent.run_turn(s, b.text, q.put, ev, inbox)
         except Exception as e:
+            import re as _re
+            spec = config.get_model(s.get("model", ""))
+            if spec and _re.search(r"HTTP (401|403|404)", str(e)):  # the provider said no: stop offering this model now
+                discover.record(spec, "denied")
             msg, ref = errors.report_ref(e, f"chat session={sid} model={s.get('model')}")
             q.put({"type": "error", "error": msg, "ref": ref})
         finally:

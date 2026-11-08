@@ -190,6 +190,20 @@ def credentialed_models() -> tuple[dict, dict]:
     return ok, hidden
 
 
+def record(spec: dict, status: str) -> None:
+    """Remember a real outcome (e.g. a chat got 401) so the picker and fallback react immediately."""
+    with _lock:
+        access = _load_access()
+        access.setdefault(_fingerprint(spec), {})[spec["model"]] = {"status": status, "at": time.time()}
+        _save_access(access)
+
+
+def fallback_model() -> str | None:
+    """The alias to use when the current one is unavailable: the default if usable, else the first usable one."""
+    ok, _ = usable_models()
+    return config.DEFAULT_MODEL if config.DEFAULT_MODEL in ok else next(iter(ok), None)
+
+
 def usable_models() -> tuple[dict, dict]:
     """(usable aliases -> spec, hidden alias -> reason): credentials present AND not found to be rejected by the
     provider (a key that is set but wrong or not entitled to the model is detected by the background probe)."""
