@@ -85,7 +85,7 @@ def generate(alias: str, contents: list, system: str = "", tools: list | None = 
     from .openai import generate as _o
     from .anthropic import generate as _a
 
-    spec = config.MODELS.get(alias)
+    spec = config.get_model(alias)
     if not spec:
         raise RuntimeError(f"Unknown model '{alias}'. Configured: {', '.join(config.MODELS)}")
     if config.REDACT:  # mask secrets/PII in the copy that leaves this machine (files and history stay intact)

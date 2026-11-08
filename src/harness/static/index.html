@@ -648,10 +648,27 @@ $('voice').onclick = () => {
   if (voiceMode) startListening(); else { speechSynthesis.cancel(); if (listening) rec.stop(); }
 };
 
+async function loadModels(refresh) {
+  // Lists what each configured endpoint actually offers; the picker keeps your current choice.
+  let d; try { d = await api('GET', '/api/models' + (refresh ? '?refresh=true' : '')); } catch (e) { return; }
+  const sel = $('model'), keep = sel.value;
+  sel.querySelectorAll('optgroup').forEach(o => o.remove());
+  for (const g of d.groups) {
+    if (!g.models.length) continue;
+    const og = document.createElement('optgroup'); og.label = `${g.source} (${g.provider}) - available`;
+    g.models.forEach(m => og.appendChild(new Option(m.id, m.alias)));
+    sel.appendChild(og);
+  }
+  const bad = d.groups.filter(g => g.error).map(g => g.source + ': ' + g.error);
+  sel.title = bad.length ? 'Could not list models for ' + bad.join(' | ') : 'Model';
+  if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
+}
+$('model').ondblclick = () => loadModels(true);
 (async () => {
   cfg = await api('GET', '/api/config');
   for (const k of Object.keys(cfg.models)) $('model').add(new Option(`${k} · ${cfg.models[k].split(':').slice(1).join(':')}`, k));
   await loadProjects();
+  loadModels();
   if (!cfg.has_api_key && !cfg.logged_in) add('err', 'Not logged in. Set <code>GEMINI_API_KEY</code> in your .env, or run <code>python -m harness login</code> for Vertex, then reload.');
   if (!cfg.has_api_key && !cfg.project) add('err', 'VERTEX_PROJECT is not set. Set <code>GEMINI_API_KEY</code> in your .env to use the Gemini API instead.');
 })();

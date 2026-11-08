@@ -66,6 +66,13 @@ def get_config():
             "has_api_key": has_api_key, "compact_at": config.COMPACT_AT}
 
 
+@app.get("/api/models")
+def models(refresh: bool = False):
+    """Models each configured endpoint offers right now (cached; refresh=true re-queries)."""
+    from . import discover
+    return {"groups": discover.discover(refresh)}
+
+
 def _proj(pid: str) -> dict:
     try:
         return store.get_project(pid)
@@ -216,7 +223,7 @@ def patch_session(sid: str, b: Patch):
     s = _get(sid)
     if b.title is not None:
         s["title"] = b.title
-    if b.model in config.MODELS:
+    if b.model and config.get_model(b.model):
         s["model"] = b.model
     if b.instructions is not None:
         s["instructions"] = b.instructions
@@ -257,7 +264,7 @@ def chat(sid: str, b: Chat):
     s = _get(sid)
     if sid in _busy:
         raise HTTPException(409, "session is already running")
-    if b.model in config.MODELS:
+    if b.model and config.get_model(b.model):
         s["model"] = b.model
     q: queue.Queue = queue.Queue()
     ev = _stops[sid] = threading.Event()
