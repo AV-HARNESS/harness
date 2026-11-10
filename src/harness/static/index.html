@@ -130,6 +130,9 @@
   .composer textarea { width:100%; resize:none; max-height:200px; background:transparent; color:inherit; border:none; padding:2px 2px 10px; font:inherit; outline:none; }
   .crow { display:flex; align-items:center; gap:6px; } .crow .sp { flex:1; }
   .ic { width:34px; height:34px; padding:0; border-radius:50%; display:grid; place-items:center; flex-shrink:0; }
+  /* chat entry buttons (plus, voice, mic, send): compact, like Claude */
+  #plus, #voice, #mic, #send { width:28px; height:28px; }
+  #plus .i, #voice .i, #mic .i, #send .i { width:15px; height:15px; }
   .ic.ghost { border-color:transparent; color:var(--mute); } .ic.ghost:hover { color:var(--ink); background:var(--hover); }
   #plus { border-color:var(--line); } #send .i { stroke-width:2.2; }
   #model { appearance:none; -webkit-appearance:none; border:none; color:var(--mute); font-size:13px; max-width:230px; padding:7px 26px 7px 10px; border-radius:9px; background:var(--hover) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239a9890' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 9px center; }
