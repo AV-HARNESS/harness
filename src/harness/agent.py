@@ -157,7 +157,7 @@ def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None
                 emit({"type": "text", "text": p["text"]})
             if "functionCall" in p:
                 calls.append(p["functionCall"])
-        emit({"type": "usage", "prompt_tokens": s["prompt_tokens"]})
+        emit({"type": "usage", "prompt_tokens": s["prompt_tokens"], "secs": usage.get("secs")})
         if not calls:
             queued = _drain(inbox)  # user typed more while this answer was being produced: keep going
             if not queued or (stop and stop.is_set()):

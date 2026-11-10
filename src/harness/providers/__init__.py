@@ -104,7 +104,16 @@ def generate(alias: str, contents: list, system: str = "", tools: list | None = 
     fn = {"gemini": _g, "openai": _o, "anthropic": _a}.get(provider)
     if not fn:
         raise RuntimeError(f"Unknown provider '{provider}'. Use one of: gemini, openai, anthropic")
-    return fn(spec, contents, system, tools, retries)
+    import time
+    t0 = time.monotonic()
+    content, usage, cand = fn(spec, contents, system, tools, retries)
+    secs = round(time.monotonic() - t0, 1)
+    usage = {**usage, "secs": secs}  # wall time of this model call, retries included
+    from .. import errors
+    errors.logger().info("model call %s: %.1fs prompt=%s thoughts=%s output=%s effort=%s",
+                         alias, secs, usage.get("promptTokenCount", usage.get("prompt_tokens", "?")),
+                         usage.get("thoughtsTokenCount", 0), usage.get("candidatesTokenCount", "?"), effort or "default")
+    return content, usage, cand
 
 
 # re-export for callers that import from providers directly
