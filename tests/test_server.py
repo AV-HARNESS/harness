@@ -364,3 +364,22 @@ def test_no_usable_model_says_which_key_to_add(client, session, monkeypatch):
     s = client.post("/api/sessions", json={"project": session["project"], "model": "oa"}).json()
     body = client.post(f"/api/sessions/{s['id']}/chat", json={"text": "hi"}).text
     assert "No model is available" in body and "OPENAI_API_KEY" in body
+
+
+@covers("R-SRV-17")
+def test_edit_sent_message_cuts_history_and_reruns(client, session, fake):
+    sid = session["id"]
+    fake.push((200, gem(text("first"))), (200, gem(text("second"))), (200, gem(text("edited-answer"))))
+    sse(client.post(f"/api/sessions/{sid}/chat", json={"text": "one"}))
+    sse(client.post(f"/api/sessions/{sid}/chat", json={"text": "two"}))
+    msgs = client.get(f"/api/sessions/{sid}").json()["messages"]
+    assert [m["parts"][0]["text"] for m in msgs] == ["one", "first", "two", "second"]
+    ev = sse(client.post(f"/api/sessions/{sid}/chat", json={"text": "TWO fixed", "edit_index": 2}))
+    assert [e["text"] for e in ev if e["type"] == "text"] == ["edited-answer"]
+    msgs = client.get(f"/api/sessions/{sid}").json()["messages"]
+    assert [m["parts"][0]["text"] for m in msgs] == ["one", "first", "TWO fixed", "edited-answer"]
+    sent = fake.requests[-1]["body"]["contents"]  # the discarded turn never reaches the model again
+    assert [c["parts"][0]["text"] for c in sent] == ["one", "first", "TWO fixed"]
+    # a model message, or an index out of range, is not editable
+    assert client.post(f"/api/sessions/{sid}/chat", json={"text": "x", "edit_index": 1}).status_code == 400
+    assert client.post(f"/api/sessions/{sid}/chat", json={"text": "x", "edit_index": 99}).status_code == 400
