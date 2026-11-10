@@ -44,6 +44,7 @@ class New(Patch):
 class Chat(BaseModel):
     text: str
     model: str | None = None
+    edit_index: int | None = None  # edit: cut history at this user message, then run the new text from there
 
 
 def _get(sid: str) -> dict:
@@ -289,6 +290,14 @@ def chat(sid: str, b: Chat):
         raise HTTPException(409, "session is already running")
     if b.model and config.get_model(b.model):
         s["model"] = b.model
+    if b.edit_index is not None:
+        i, msgs = b.edit_index, s["messages"]
+        if not (0 <= i < len(msgs)) or not agent._is_user_text(msgs[i]):
+            raise HTTPException(400, "that message can't be edited")
+        s["messages"] = msgs[:i]
+        s["prompt_tokens"] = 0
+        s.pop("compact_base", None)
+        store.save(s)
     _live[sid] = s
     q: queue.Queue = queue.Queue()
     ev = _stops[sid] = threading.Event()

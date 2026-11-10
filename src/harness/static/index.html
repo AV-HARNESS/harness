@@ -136,6 +136,11 @@
   #model:hover { color:var(--ink); }
   #mic.listening, #voice.on { background:var(--accent); border-color:var(--accent); color:#fff; } #mic.listening { animation:pulse 1s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
+  .msg.user { position:relative; }
+  .medit { position:absolute; left:-34px; top:6px; border:none; background:none; color:var(--mute); cursor:pointer; opacity:0; padding:4px; border-radius:8px; }
+  .msg.user:hover .medit, .medit:focus { opacity:1; } .medit:hover { background:var(--hover); color:var(--ink); } .medit .i { width:15px; height:15px; }
+  .msg.editing { width:100%; } .medta { width:100%; min-height:70px; resize:vertical; border:1px solid var(--line); border-radius:10px; padding:8px 10px; font:inherit; background:var(--bg); color:var(--ink); box-sizing:border-box; }
+  .medrow { display:flex; justify-content:flex-end; gap:8px; margin-top:8px; } .medrow button { padding:6px 14px; border-radius:9px; border:1px solid var(--line); background:var(--bg); color:var(--ink); cursor:pointer; } .medrow .primary { background:var(--accent, #1f7a78); color:#fff; border-color:transparent; }
   .menu { position:absolute; bottom:52px; left:0; background:var(--bg); border:1px solid var(--line); border-radius:14px; padding:6px; min-width:270px; box-shadow:var(--shadow); z-index:5; }
   .menu button { display:flex; align-items:center; gap:11px; width:100%; text-align:left; border:none; padding:9px 11px; border-radius:9px; }
   .menu button .i { color:var(--mute); width:17px; height:17px; }
@@ -310,10 +315,17 @@ function toolResult(out) {
   if (String(out).startsWith('ERROR')) d.classList.add('bad');
 }
 function endSteps() { if (grp) grp.classList.remove('live'); grp = null; pend = []; }
-function render(m) {
+function render(m, i) {
   for (const p of m.parts) {
     if (p.thought) continue;
-    if (p.text) add(m.role === 'user' ? 'user' : '', md(p.text));
+    if (p.text) {
+      const d = add(m.role === 'user' ? 'user' : '', md(p.text));
+      if (m.role === 'user' && typeof i === 'number') {  // edit a sent message: history is cut here and the new text re-runs from that point
+        d.dataset.i = i; d.dataset.raw = p.text;
+        const b = document.createElement('button'); b.className = 'medit'; b.title = 'Edit and resend from here'; b.innerHTML = SVG('pen');
+        b.onclick = () => editMsg(d); d.appendChild(b);
+      }
+    }
     if (p.functionCall) toolCall(p.functionCall.name, p.functionCall.args);
     if (p.functionResponse) toolResult(p.functionResponse.response.output);
   }
@@ -352,7 +364,18 @@ async function open(id) {
   if (stash[id]) { $('in').value = stash[id]; delete stash[id]; }
   if (cur.running && !runningSids.has(id)) watch(id);  // running here in another tab or earlier: follow it live
 }
-function paint() { $('msgs').innerHTML = ''; lastTool = null; grp = null; pend = []; cur.messages.forEach(render); endSteps(); }
+function paint() { $('msgs').innerHTML = ''; lastTool = null; grp = null; pend = []; cur.messages.forEach((m, i) => render(m, i)); endSteps(); }
+function editMsg(d) {
+  if (isRunning()) { add('sys', 'Wait for the current run to finish (or stop it) before editing a message.'); return; }
+  const i = +d.dataset.i, raw = d.dataset.raw, html = d.innerHTML;
+  d.classList.add('editing');
+  d.innerHTML = `<textarea class="medta"></textarea><div class="medrow"><button class="mcancel">Cancel</button><button class="primary msave">Send</button></div>`;
+  const ta = d.querySelector('textarea'); ta.value = raw; ta.style.height = Math.min(ta.scrollHeight + 4, 300) + 'px'; ta.focus();
+  const done = () => { d.classList.remove('editing'); d.innerHTML = html; const b = d.querySelector('.medit'); if (b) b.onclick = () => editMsg(d); };
+  d.querySelector('.mcancel').onclick = done;
+  d.querySelector('.msave').onclick = () => { const t = ta.value.trim(); if (!t) return; if (t === raw.trim()) return done(); send(t, i); };
+  ta.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); d.querySelector('.msave').click(); } if (e.key === 'Escape') done(); };
+}
 function watch(id) {
   clearTimeout(pollTimer);
   pollTimer = setTimeout(async () => {
@@ -382,16 +405,18 @@ async function queueMsg(text) {
   if (r.ok) { (queuedBy[sid] ||= []).push(text); if (cur && cur.id === sid) drawQueued(); }
   else if (cur && cur.id === sid) add('err', esc(await r.text()));
 }
-async function send(textOverride) {
+async function send(textOverride, editIndex) {
   let text = (textOverride || $('in').value).trim(); if (!text) return;
-  if (isRunning()) return queueMsg(text);
-  if (files.length) { text = 'Attached files (read them with read_file):\n' + files.map(f => '- ' + f).join('\n') + '\n\n' + text; files = []; drawChips(); }
+  const editing = typeof editIndex === 'number';
+  if (isRunning()) return editing ? null : queueMsg(text);
+  if (editing) { cur.messages.length = editIndex; paint(); }
+  if (files.length && !editing) { text = 'Attached files (read them with read_file):\n' + files.map(f => '- ' + f).join('\n') + '\n\n' + text; files = []; drawChips(); }
   if (!cur) await newSession();
   const sid = cur.id, here = () => !!cur && cur.id === sid;  // paint only while THIS session is the one on screen
-  $('in').value = ''; $('in').style.height = 'auto';
+  if (!editing) { $('in').value = ''; $('in').style.height = 'auto'; }
   add('user', md(text)); runningSids.add(sid); setSend(true); lastTool = null; let leftover = [], spoken = '';
   const r = await fetch(`/api/sessions/${sid}/chat`, {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({text, model: $('model').value})});
+    body: JSON.stringify({text, model: $('model').value, edit_index: editing ? editIndex : null})});
   if (!r.ok) { runningSids.delete(sid); if (here()) { add('err', esc(await r.text())); setSend(false); } return; }
   const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '';
   while (true) {
