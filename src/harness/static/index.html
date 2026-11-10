@@ -133,13 +133,16 @@
   .ic.ghost { border-color:transparent; color:var(--mute); } .ic.ghost:hover { color:var(--ink); background:var(--hover); }
   #plus { border-color:var(--line); } #send .i { stroke-width:2.2; }
   #model { appearance:none; -webkit-appearance:none; border:none; color:var(--mute); font-size:13px; max-width:230px; padding:7px 26px 7px 10px; border-radius:9px; background:var(--hover) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239a9890' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 9px center; }
-  #model:hover { color:var(--ink); }
+  #model:hover { color:var(--ink); opacity:1; }
   #mic.listening, #voice.on { background:var(--accent); border-color:var(--accent); color:#fff; } #mic.listening { animation:pulse 1s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
   .effwrap { position:relative; }
   .effbtn { display:flex; align-items:center; gap:4px; border:none; background:var(--hover); color:var(--mute); font-size:13px; padding:7px 9px 7px 10px; border-radius:9px; cursor:pointer; }
   .effbtn:hover { color:var(--ink); } .effbtn .i { width:12px; height:12px; }
   .menu.effmenu { left:auto; right:0; min-width:230px; }
+  /* model + effort read as quiet text, like Claude: no fill, lighter until hovered or open */
+  #model, .effbtn { background-color:transparent; opacity:.6; transition:opacity .12s, background-color .12s; }
+  #model:hover, .effbtn:hover, #model:focus, .effbtn[aria-expanded="true"] { opacity:1; background-color:var(--hover); }
   .effmenu button { flex-wrap:wrap; } .effmenu button b { font-weight:600; flex:1; } .effmenu button small { display:block; width:100%; padding:0; margin-left:28px; }
   .msg.user { position:relative; }
   .medit { position:absolute; left:-34px; top:6px; border:none; background:none; color:var(--mute); cursor:pointer; opacity:0; padding:4px; border-radius:8px; }
@@ -472,7 +475,7 @@ function setEffort(v, save) {
     if (cur) await api('PATCH', '/api/sessions/' + cur.id, {effort: b.dataset.v}); });
 }
 setEffort('');
-$('effbtn').onclick = e => { e.stopPropagation(); $('effmenu').hidden = !$('effmenu').hidden; };
+$('effbtn').onclick = e => { e.stopPropagation(); $('effmenu').hidden = !$('effmenu').hidden; $('effbtn').setAttribute('aria-expanded', !$('effmenu').hidden); };
 $('model').onchange = async () => { if (cur) await api('PATCH', '/api/sessions/' + cur.id, {model: $('model').value}); loadList(); };
 $('compact').onclick = async () => {
   if (!cur) return; const r = await api('POST', `/api/sessions/${cur.id}/compact`);
