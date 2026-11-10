@@ -80,7 +80,7 @@ def _audit(alias, spec, contents, system, tools, counts) -> None:
 # ---- public entry point ----
 
 def generate(alias: str, contents: list, system: str = "", tools: list | None = None,
-             retries: int = 4) -> tuple[dict, dict, dict]:
+             retries: int = 4, effort: str = "") -> tuple[dict, dict, dict]:
     from .gemini import generate as _g
     from .openai import generate as _o
     from .anthropic import generate as _a
@@ -98,6 +98,8 @@ def generate(alias: str, contents: list, system: str = "", tools: list | None = 
         _audit(alias, spec, contents, system, tools, counts)
     if config.DRY_RUN:
         return ({"role": "model", "parts": [{"text": "(dry run: request was masked and logged, not sent)"}]}, {}, {})
+    if effort in ("low", "medium", "high"):
+        spec = {**spec, "effort": effort}
     provider = spec.get("provider", "gemini")
     fn = {"gemini": _g, "openai": _o, "anthropic": _a}.get(provider)
     if not fn:

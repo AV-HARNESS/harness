@@ -297,3 +297,16 @@ def test_only_providers_with_a_key_show_up(monkeypatch):
     assert set(discover.usable_models()[0]) == {"openai"}
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-real-looking-1234567890")
     assert set(discover.usable_models()[0]) == {"openai", "claude"}  # both keys set: both providers shown
+
+
+@covers("R-PROV-13")
+def test_effort_maps_to_gemini_thinking_and_is_optional(fake, model):
+    fake.push((200, gem(text("a"))), (200, gem(text("b"))), (200, gem(text("c"))))
+    providers.generate(model, HIST)
+    assert "generationConfig" not in fake.requests[0]["body"]
+    providers.generate(model, HIST, effort="low")  # model id 'm' is not Gemini 3 -> token budget
+    assert fake.requests[1]["body"]["generationConfig"] == {"thinkingConfig": {"thinkingBudget": 1024}}
+    from harness.providers.gemini import thinking_config
+    assert thinking_config({"model": "gemini-3.7-pro", "effort": "medium"}) == {"thinkingLevel": "high"}
+    assert thinking_config({"model": "gemini-3.7-flash", "effort": "medium"}) == {"thinkingLevel": "medium"}
+    assert thinking_config({"model": "gemini-3.7-flash"}) is None
