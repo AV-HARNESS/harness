@@ -131,22 +131,20 @@
   .crow { display:flex; align-items:center; gap:6px; } .crow .sp { flex:1; }
   .ic { width:34px; height:34px; padding:0; border-radius:50%; display:grid; place-items:center; flex-shrink:0; }
   /* chat entry buttons (plus, voice, mic, send): compact, like Claude */
-  #plus, #voice, #mic, #send { width:28px; height:28px; }
-  #plus .i, #voice .i, #mic .i, #send .i { width:15px; height:15px; }
+  #plus, #voice, #mic, #send { width:26px; height:26px; }
+  #plus .i, #voice .i, #mic .i, #send .i { width:14px; height:14px; }
+  .mpwrap { position:relative; }
+  .mbtn { display:flex; align-items:center; gap:5px; border:none; background:transparent; color:var(--mute); font-size:13px; padding:5px 8px; border-radius:9px; cursor:pointer; opacity:.65; max-width:260px; }
+  .mbtn:hover, .mbtn[aria-expanded="true"] { opacity:1; background:var(--hover); color:var(--ink); } .mbtn .i { width:12px; height:12px; flex-shrink:0; }
+  #mlab { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } #mlab em { font-style:normal; opacity:.7; }
+  .menu.mpmenu { left:auto; right:0; min-width:290px; max-width:340px; max-height:70vh; overflow:auto; }
+  .mpmenu .mh { display:block; padding:8px 11px 3px; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--mute); }
+  .mpmenu button { padding:7px 11px; } .mpmenu button b { font-weight:500; flex:1; overflow:hidden; text-overflow:ellipsis; } .mpmenu button small { display:inline; padding:0; font-size:11.5px; } .mpmenu button .i { order:3; }
+  .mpmenu hr { border:none; border-top:1px solid var(--line); margin:6px 0; }
   .ic.ghost { border-color:transparent; color:var(--mute); } .ic.ghost:hover { color:var(--ink); background:var(--hover); }
-  #plus { border-color:var(--line); } #send .i { stroke-width:2.2; }
-  #model { appearance:none; -webkit-appearance:none; border:none; color:var(--mute); font-size:13px; max-width:230px; padding:7px 26px 7px 10px; border-radius:9px; background:var(--hover) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239a9890' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 9px center; }
-  #model:hover { color:var(--ink); opacity:1; }
+  #plus { border-color:transparent; background:transparent; color:var(--mute); } #plus:hover { color:var(--ink); background:var(--hover); } #send .i { stroke-width:2.2; }
   #mic.listening, #voice.on { background:var(--accent); border-color:var(--accent); color:#fff; } #mic.listening { animation:pulse 1s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
-  .effwrap { position:relative; }
-  .effbtn { display:flex; align-items:center; gap:4px; border:none; background:var(--hover); color:var(--mute); font-size:13px; padding:7px 9px 7px 10px; border-radius:9px; cursor:pointer; }
-  .effbtn:hover { color:var(--ink); } .effbtn .i { width:12px; height:12px; }
-  .menu.effmenu { left:auto; right:0; min-width:230px; }
-  /* model + effort read as quiet text, like Claude: no fill, lighter until hovered or open */
-  #model, .effbtn { background-color:transparent; opacity:.6; transition:opacity .12s, background-color .12s; }
-  #model:hover, .effbtn:hover, #model:focus, .effbtn[aria-expanded="true"] { opacity:1; background-color:var(--hover); }
-  .effmenu button { flex-wrap:wrap; } .effmenu button b { font-weight:600; flex:1; } .effmenu button small { display:block; width:100%; padding:0; margin-left:28px; }
   .msg.user { position:relative; }
   .medit { position:absolute; left:-34px; top:6px; border:none; background:none; color:var(--mute); cursor:pointer; opacity:0; padding:4px; border-radius:8px; }
   .msg.user:hover .medit, .medit:focus { opacity:1; } .medit:hover { background:var(--hover); color:var(--ink); } .medit .i { width:15px; height:15px; }
@@ -227,9 +225,10 @@
           <small>The agent works only inside the linked folder.</small>
         </div>
         <span class="sp"></span>
-        <select id="model" title="Model"></select>
-        <span class="effwrap"><input type="hidden" id="effort" value=""><button id="effbtn" class="effbtn" title="Thinking effort: lower is faster"><span id="efflab">Default</span><svg class="i "><use href="#i-chev"/></svg></button>
-          <div class="menu effmenu" id="effmenu" hidden></div></span>
+        <select id="model" title="Model" hidden></select>
+        <input type="hidden" id="effort" value="">
+        <span class="mpwrap"><button id="modelbtn" class="mbtn" title="Model and thinking effort (double-click to re-check access)"><span id="mlab">model</span><svg class="i "><use href="#i-chev"/></svg></button>
+          <div class="menu mpmenu" id="mpmenu" hidden></div></span>
         <button id="voice" class="ic ghost" title="Voice mode: talk, it answers out loud"><svg class="i "><use href="#i-wave"/></svg></button>
         <button id="mic" class="ic ghost" title="Dictate (click to start/stop)"><svg class="i "><use href="#i-mic"/></svg></button>
         <button id="send" class="primary ic" title="Send"><svg class="i "><use href="#i-up"/></svg></button>
@@ -372,7 +371,7 @@ async function open(id) {
   if (t !== openTok) return;  // a newer click won: never paint an older answer over it
   clearTimeout(pollTimer); cur = s;
   paint();
-  $('title').value = cur.title; $('model').value = cur.model; setEffort(cur.effort || ''); $('instr').value = cur.instructions || '';
+  $('title').value = cur.title; $('model').value = cur.model; syncModelBtn(); setEffort(cur.effort || ''); $('instr').value = cur.instructions || '';
   setTok(cur.prompt_tokens); setSend(isRunning()); drawQueued(); setHash(); loadList();
   if (stash[id]) { $('in').value = stash[id]; delete stash[id]; }
   if (cur.running && !runningSids.has(id)) watch(id);  // running here in another tab or earlier: follow it live
@@ -446,7 +445,7 @@ async function send(textOverride, editIndex) {
       else if (e.type === 'tool_call') toolCall(e.name, e.args);
       else if (e.type === 'tool_result') toolResult(e.output);
       else if (e.type === 'user') { drawQueued(); add('user', md(e.text)); }
-      else if (e.type === 'notice') { add('sys', esc(e.text)); if ([...$('model').options].some(o => o.value === e.model)) $('model').value = e.model; }
+      else if (e.type === 'notice') { add('sys', esc(e.text)); if ([...$('model').options].some(o => o.value === e.model)) { $('model').value = e.model; syncModelBtn(); } }
       else if (e.type === 'usage') setTok(e.prompt_tokens);
       else if (e.type === 'compacted') add('sys', 'Context compacted into a summary.');
       else if (e.type === 'error') add('err', esc(e.error) + (e.ref ? ` <a href="/api/log?ref=${e.ref}" target="_blank">View details</a>` : ''));
@@ -470,16 +469,28 @@ $('in').oninput = e => { if (isRunning()) setSend(!e.target.value.trim());
 $('title').onchange = async () => { if (cur) { await api('PATCH', '/api/sessions/' + cur.id, {title: $('title').value}); loadList(); } };
 $('instr').onchange = async () => { if (cur) await api('PATCH', '/api/sessions/' + cur.id, {instructions: $('instr').value}); };
 const EFFORTS = [['', 'Default', "The model's own setting"], ['low', 'Low', 'Fastest, least thinking'], ['medium', 'Medium', 'Balanced'], ['high', 'High', 'Slowest, most careful']];
-function setEffort(v, save) {
-  $('effort').value = v || ''; $('efflab').textContent = (EFFORTS.find(e => e[0] === (v || '')) || EFFORTS[0])[1];
-  $('effmenu').innerHTML = EFFORTS.map(e => `<button data-v="${e[0]}"><b>${e[1]}</b>${(v || '') === e[0] ? SVG('check') : ''}<small>${e[2]}</small></button>`).join('');
-  $('effmenu').querySelectorAll('button').forEach(b => b.onclick = async () => {
-    $('effmenu').hidden = true; setEffort(b.dataset.v);
-    if (cur) await api('PATCH', '/api/sessions/' + cur.id, {effort: b.dataset.v}); });
+function modelLabel() { const o = $('model').selectedOptions[0]; return o ? o.textContent.replace(/ \((checking\.\.\.|unverified)\)$/, '').split(' · ')[0] : 'model'; }
+function syncModelBtn() {
+  const e = EFFORTS.find(x => x[0] === ($('effort').value || '')) || EFFORTS[0];
+  $('mlab').innerHTML = esc(modelLabel()) + (e[0] ? ` <em>${e[1]}</em>` : '');
 }
+function setEffort(v) { $('effort').value = v || ''; syncModelBtn(); }
+function drawModelMenu() {
+  const sel = $('model'), cur_ = sel.value; let h = '';
+  const item = o => `<button data-m="${esc(o.value)}"><b>${esc(o.textContent.replace(/ \((checking\.\.\.|unverified)\)$/, ''))}</b>${o.value === cur_ ? SVG('check') : ''}</button>`;
+  const top = [...sel.children].filter(c => c.tagName === 'OPTION');
+  if (top.length) h += '<span class="mh">Models</span>' + top.map(item).join('');
+  sel.querySelectorAll('optgroup').forEach(g => { h += `<span class="mh">${esc(g.label)}</span>` + [...g.children].map(item).join(''); });
+  h += '<hr><span class="mh">Thinking effort</span>' + EFFORTS.map(e => `<button data-e="${e[0]}"><b>${e[1]}</b>${($('effort').value || '') === e[0] ? SVG('check') : ''}<small>${e[2]}</small></button>`).join('');
+  $('mpmenu').innerHTML = h;
+  $('mpmenu').querySelectorAll('[data-m]').forEach(b => b.onclick = () => { $('mpmenu').hidden = true; sel.value = b.dataset.m; sel.dispatchEvent(new Event('change')); syncModelBtn(); });
+  $('mpmenu').querySelectorAll('[data-e]').forEach(b => b.onclick = async () => {
+    $('mpmenu').hidden = true; setEffort(b.dataset.e);
+    if (cur) await api('PATCH', '/api/sessions/' + cur.id, {effort: b.dataset.e}); });
+}
+$('modelbtn').onclick = e => { e.stopPropagation(); if ($('mpmenu').hidden) drawModelMenu(); $('mpmenu').hidden = !$('mpmenu').hidden; $('modelbtn').setAttribute('aria-expanded', !$('mpmenu').hidden); };
 setEffort('');
-$('effbtn').onclick = e => { e.stopPropagation(); $('effmenu').hidden = !$('effmenu').hidden; $('effbtn').setAttribute('aria-expanded', !$('effmenu').hidden); };
-$('model').onchange = async () => { if (cur) await api('PATCH', '/api/sessions/' + cur.id, {model: $('model').value}); loadList(); };
+$('model').onchange = async () => { syncModelBtn(); if (cur) await api('PATCH', '/api/sessions/' + cur.id, {model: $('model').value}); loadList(); };
 $('compact').onclick = async () => {
   if (!cur) return; const r = await api('POST', `/api/sessions/${cur.id}/compact`);
   if (r.compacted) open(cur.id); else add('sys', 'Nothing to compact yet.');
@@ -508,7 +519,7 @@ async function switchProject(id, sid) {
   proj = projects.find(p => p.id === id) || projects[0]; drawProj();
   try { localStorage.setItem('proj', proj.id); } catch (e) {}
   $('froot').textContent = proj.root;
-  $('model').value = proj.model || cfg.default_model;
+  $('model').value = proj.model || cfg.default_model; syncModelBtn();
   cur = null; files = []; drawChips(); $('msgs').innerHTML = ''; setTok(0); $('title').value = ''; $('instr').value = '';
   await loadBlocks();
   const ss = await api('GET', '/api/sessions?project=' + proj.id);
@@ -656,7 +667,7 @@ function drawChips() {
 
 // ---- "+" menu ----
 $('plus').onclick = e => { e.stopPropagation(); $('menu').hidden = !$('menu').hidden; };
-document.addEventListener('click', e => { if (!$('menu').contains(e.target)) $('menu').hidden = true; if (!$('projmenu').contains(e.target)) $('projmenu').hidden = true; if (!$('effmenu').contains(e.target)) $('effmenu').hidden = true; });
+document.addEventListener('click', e => { if (!$('menu').contains(e.target)) $('menu').hidden = true; if (!$('projmenu').contains(e.target)) $('projmenu').hidden = true; if (!$('mpmenu').contains(e.target)) { $('mpmenu').hidden = true; $('modelbtn').setAttribute('aria-expanded', false); } });
 $('m-attach').onclick = async () => {
   $('menu').hidden = true; const picked = await pickFolder('attach', proj.root);
   if (picked) { for (const f of picked) if (!files.includes(f)) files.push(f); drawChips(); }
@@ -766,9 +777,10 @@ async function loadModels(mode) {
   const bad = d.groups.filter(g => g.error).map(g => g.source + ': ' + g.error);
   sel.title = d.pending ? `Checking access to ${d.pending} more model(s)...` : bad.length ? 'Could not list models for ' + bad.join(' | ') : 'Model (double-click to re-check access)';
   if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
+  syncModelBtn();
   if (d.pending) modelTimer = setTimeout(() => loadModels(), 2500);
 }
-$('model').ondblclick = () => loadModels('recheck');
+$('modelbtn').ondblclick = () => loadModels('recheck');
 (async () => {
   cfg = await api('GET', '/api/config');
   for (const k of Object.keys(cfg.models)) $('model').add(new Option(`${k} · ${cfg.models[k].split(':').slice(1).join(':')}`, k));

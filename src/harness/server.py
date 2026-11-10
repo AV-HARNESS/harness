@@ -60,7 +60,7 @@ def _get(sid: str) -> dict:
 
 @app.get("/")
 def index():
-    return FileResponse(STATIC / "index.html")
+    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})  # always pick up UI updates
 
 
 @app.get("/api/config")
