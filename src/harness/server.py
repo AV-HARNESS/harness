@@ -35,6 +35,7 @@ class Patch(BaseModel):
     title: str | None = None
     model: str | None = None
     instructions: str | None = None
+    effort: str | None = None
 
 
 class New(Patch):
@@ -44,6 +45,7 @@ class New(Patch):
 class Chat(BaseModel):
     text: str
     model: str | None = None
+    effort: str | None = None
 
 
 def _get(sid: str) -> dict:
@@ -244,6 +246,8 @@ def patch_session(sid: str, b: Patch):
         s["model"] = b.model
     if b.instructions is not None:
         s["instructions"] = b.instructions
+    if b.effort is not None:
+        s["effort"] = b.effort if b.effort in ("low", "medium", "high") else ""
     store.save(s)
     return s
 
@@ -289,6 +293,8 @@ def chat(sid: str, b: Chat):
         raise HTTPException(409, "session is already running")
     if b.model and config.get_model(b.model):
         s["model"] = b.model
+    if b.effort is not None:
+        s["effort"] = b.effort if b.effort in ("low", "medium", "high") else ""
     _live[sid] = s
     q: queue.Queue = queue.Queue()
     ev = _stops[sid] = threading.Event()

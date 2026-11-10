@@ -22,12 +22,26 @@ def _key(spec: dict) -> str:
     return k or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY", "")
 
 
+def thinking_config(spec: dict) -> dict | None:
+    """Map the session's effort (low/medium/high) to Gemini's thinking setting; None = model default."""
+    effort, model = spec.get("effort"), spec.get("model", "")
+    if effort not in ("low", "medium", "high"):
+        return None
+    if "gemini-3" in model:  # Gemini 3 takes a level; Pro has only low/high
+        level = effort if "pro" not in model or effort == "low" else "high"
+        return {"thinkingLevel": level}
+    return {"thinkingBudget": {"low": 1024, "medium": 8192, "high": -1}[effort]}  # 2.5: token budget, -1 = dynamic
+
+
 def generate(spec: dict, contents: list, system: str, tools, retries: int) -> tuple[dict, dict, dict]:
     body: dict = {"contents": contents}
     if system:
         body["systemInstruction"] = {"parts": [{"text": system}]}
     if tools:
         body["tools"] = tools
+    think = thinking_config(spec)
+    if think:
+        body["generationConfig"] = {"thinkingConfig": think}
 
     if gemini_mode(spec) == "api_key":
         key = _key(spec)

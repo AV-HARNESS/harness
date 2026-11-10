@@ -136,7 +136,12 @@
   #model:hover { color:var(--ink); }
   #mic.listening, #voice.on { background:var(--accent); border-color:var(--accent); color:#fff; } #mic.listening { animation:pulse 1s infinite; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
-  .menu { position:absolute; bottom:52px; left:0; background:var(--bg); border:1px solid var(--line); border-radius:14px; padding:6px; min-width:270px; box-shadow:var(--shadow); z-index:5; }
+  .effwrap { position:relative; }
+  .effbtn { display:flex; align-items:center; gap:4px; border:none; background:var(--hover); color:var(--mute); font-size:13px; padding:7px 9px 7px 10px; border-radius:9px; cursor:pointer; }
+  .effbtn:hover { color:var(--ink); } .effbtn .i { width:12px; height:12px; }
+  .menu.effmenu { left:auto; right:0; min-width:230px; }
+  .effmenu button { flex-wrap:wrap; } .effmenu button b { font-weight:600; flex:1; } .effmenu button small { display:block; width:100%; padding:0; margin-left:28px; }
+  .menu {  position:absolute; bottom:52px; left:0; background:var(--bg); border:1px solid var(--line); border-radius:14px; padding:6px; min-width:270px; box-shadow:var(--shadow); z-index:5; }
   .menu button { display:flex; align-items:center; gap:11px; width:100%; text-align:left; border:none; padding:9px 11px; border-radius:9px; }
   .menu button .i { color:var(--mute); width:17px; height:17px; }
   .menu small { display:block; color:var(--mute); padding:4px 11px 4px; font-size:12px; }
@@ -212,6 +217,8 @@
         </div>
         <span class="sp"></span>
         <select id="model" title="Model"></select>
+        <span class="effwrap"><input type="hidden" id="effort" value=""><button id="effbtn" class="effbtn" title="Thinking effort: lower is faster"><span id="efflab">Default</span><svg class="i "><use href="#i-chev"/></svg></button>
+          <div class="menu effmenu" id="effmenu" hidden></div></span>
         <button id="voice" class="ic ghost" title="Voice mode: talk, it answers out loud"><svg class="i "><use href="#i-wave"/></svg></button>
         <button id="mic" class="ic ghost" title="Dictate (click to start/stop)"><svg class="i "><use href="#i-mic"/></svg></button>
         <button id="send" class="primary ic" title="Send"><svg class="i "><use href="#i-up"/></svg></button>
@@ -347,7 +354,7 @@ async function open(id) {
   if (t !== openTok) return;  // a newer click won: never paint an older answer over it
   clearTimeout(pollTimer); cur = s;
   paint();
-  $('title').value = cur.title; $('model').value = cur.model; $('instr').value = cur.instructions || '';
+  $('title').value = cur.title; $('model').value = cur.model; setEffort(cur.effort || ''); $('instr').value = cur.instructions || '';
   setTok(cur.prompt_tokens); setSend(isRunning()); drawQueued(); setHash(); loadList();
   if (stash[id]) { $('in').value = stash[id]; delete stash[id]; }
   if (cur.running && !runningSids.has(id)) watch(id);  // running here in another tab or earlier: follow it live
@@ -391,7 +398,7 @@ async function send(textOverride) {
   $('in').value = ''; $('in').style.height = 'auto';
   add('user', md(text)); runningSids.add(sid); setSend(true); lastTool = null; let leftover = [], spoken = '';
   const r = await fetch(`/api/sessions/${sid}/chat`, {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({text, model: $('model').value})});
+    body: JSON.stringify({text, model: $('model').value, effort: $('effort').value})});
   if (!r.ok) { runningSids.delete(sid); if (here()) { add('err', esc(await r.text())); setSend(false); } return; }
   const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '';
   while (true) {
@@ -431,6 +438,16 @@ $('in').oninput = e => { if (isRunning()) setSend(!e.target.value.trim());
    e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; };
 $('title').onchange = async () => { if (cur) { await api('PATCH', '/api/sessions/' + cur.id, {title: $('title').value}); loadList(); } };
 $('instr').onchange = async () => { if (cur) await api('PATCH', '/api/sessions/' + cur.id, {instructions: $('instr').value}); };
+const EFFORTS = [['', 'Default', "The model's own setting"], ['low', 'Low', 'Fastest, least thinking'], ['medium', 'Medium', 'Balanced'], ['high', 'High', 'Slowest, most careful']];
+function setEffort(v, save) {
+  $('effort').value = v || ''; $('efflab').textContent = (EFFORTS.find(e => e[0] === (v || '')) || EFFORTS[0])[1];
+  $('effmenu').innerHTML = EFFORTS.map(e => `<button data-v="${e[0]}"><b>${e[1]}</b>${(v || '') === e[0] ? SVG('check') : ''}<small>${e[2]}</small></button>`).join('');
+  $('effmenu').querySelectorAll('button').forEach(b => b.onclick = async () => {
+    $('effmenu').hidden = true; setEffort(b.dataset.v);
+    if (cur) await api('PATCH', '/api/sessions/' + cur.id, {effort: b.dataset.v}); });
+}
+setEffort('');
+$('effbtn').onclick = e => { e.stopPropagation(); $('effmenu').hidden = !$('effmenu').hidden; };
 $('model').onchange = async () => { if (cur) await api('PATCH', '/api/sessions/' + cur.id, {model: $('model').value}); loadList(); };
 $('compact').onclick = async () => {
   if (!cur) return; const r = await api('POST', `/api/sessions/${cur.id}/compact`);
@@ -608,7 +625,7 @@ function drawChips() {
 
 // ---- "+" menu ----
 $('plus').onclick = e => { e.stopPropagation(); $('menu').hidden = !$('menu').hidden; };
-document.addEventListener('click', e => { if (!$('menu').contains(e.target)) $('menu').hidden = true; if (!$('projmenu').contains(e.target)) $('projmenu').hidden = true; });
+document.addEventListener('click', e => { if (!$('menu').contains(e.target)) $('menu').hidden = true; if (!$('projmenu').contains(e.target)) $('projmenu').hidden = true; if (!$('effmenu').contains(e.target)) $('effmenu').hidden = true; });
 $('m-attach').onclick = async () => {
   $('menu').hidden = true; const picked = await pickFolder('attach', proj.root);
   if (picked) { for (const f of picked) if (!files.includes(f)) files.push(f); drawChips(); }

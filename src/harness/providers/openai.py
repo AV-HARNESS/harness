@@ -46,6 +46,9 @@ def generate(spec: dict, contents: list, system: str, tools, retries: int) -> tu
     if key:
         headers["Authorization"] = f"Bearer {key}"
     body = {"model": spec["model"], "messages": _to_openai(system, contents), **spec.get("extra", {})}
+    import re
+    if spec.get("effort") and re.match(r"(o\d|gpt-5)", spec["model"]):  # only reasoning models accept this
+        body["reasoning_effort"] = spec["effort"]
     decls = _declarations(tools)
     if decls:
         body["tools"] = []
