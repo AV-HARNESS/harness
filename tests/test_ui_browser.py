@@ -123,3 +123,27 @@ def test_tabs_and_session_switching_never_mix_chats(app):
         browser.close()
     for s, other in ((s0, "MARK-one"), (s1, "MARK-zero")):
         assert other not in json.dumps(api("GET", f"/api/sessions/{s['id']}")["messages"])
+
+
+@covers("R-SRV-17")
+def test_pencil_edits_a_sent_message_and_reruns_from_there(app):
+    base, model, projects, api = app
+    (p0, s0), _ = projects
+    for t in ("EDIT-first", "EDIT-second"):
+        r = requests.post(f"{base}/api/sessions/{s0['id']}/chat", json={"text": t, "model": "echo"}, timeout=20)
+        assert '"type": "error"' not in r.text, r.text
+    with playwright.sync_playwright() as pw:
+        browser = pw.chromium.launch(executable_path=CHROME, args=["--no-sandbox"])
+        page = browser.new_page()
+        page.goto(f"{base}/#p={p0['id']}&s={s0['id']}")
+        _wait_text(page, "EDIT-second")
+        page.hover("#msgs .msg.user[data-i='4']")
+        page.click("#msgs .msg.user[data-i='4'] .medit")
+        page.fill("#msgs textarea.medta", "EDIT-changed")
+        page.click("#msgs .msave")
+        page.wait_for_function("document.querySelector('#send').title === 'Send' && document.querySelector('#msgs').innerText.includes('EDIT-changed')", timeout=10000)
+        text = _msgs(page)
+        assert "EDIT-first" in text and "EDIT-second" not in text
+        saved = api("GET", f"/api/sessions/{s0['id']}")["messages"]
+        assert [m["parts"][0]["text"] for m in saved if m["role"] == "user" and "text" in m["parts"][0]] == ["EDIT-first", "EDIT-changed"]
+        browser.close()
