@@ -104,10 +104,12 @@
   header { display:flex; align-items:center; gap:10px; padding:12px 22px; border-bottom:1px solid var(--line); }
   header input { flex:1; background:transparent; border:none; color:inherit; font-weight:650; font-size:16px; outline:none; letter-spacing:-.01em; }
   #tok { color:var(--mute); font-size:12px; white-space:nowrap; background:var(--panel); padding:3px 9px; border-radius:20px; } #tok:empty { display:none; }
-  #log { flex:1; overflow:auto; padding:24px 0; }
+  #log { flex:1; overflow:auto; padding:24px 0; scrollbar-gutter:stable both-edges; }  /* a visible scrollbar must not push the chat off-centre from the input box */
   .col { max-width:780px; margin:0 auto; padding:0 22px; }
   .msg { margin:0 0 20px; white-space:pre-wrap; word-wrap:break-word; }
   .user { background:var(--panel); border-radius:16px; padding:11px 16px; }
+  /* text of every message, tool pill and the input box starts at the same x (16px in from the column edge) */
+  #msgs > .msg:not(.user), #msgs > .steps { padding-left:16px; padding-right:16px; }
   .err { color:#c0392b; } .sys { color:var(--mute); font-size:13px; }
   /* tool steps: collapsed into one line, like Claude */
   .steps { margin:0 0 16px; font-size:13px; }
@@ -125,7 +127,7 @@
   footer { padding:6px 0 18px; }
   #folder { color:var(--mute); font-size:12px; padding:0 6px 8px; display:flex; gap:6px; align-items:center; } #folder .i { width:14px; height:14px; }
   #folder button { padding:1px 9px; font-size:12px; border-radius:7px; }
-  .composer { background:var(--card); border:1px solid var(--line); border-radius:20px; padding:12px 14px 10px; box-shadow:0 2px 12px rgba(0,0,0,.05); transition:border-color .15s, box-shadow .15s; }
+  .composer { background:var(--card); border:1px solid var(--line); border-radius:20px; padding:12px 14px 10px 13px; box-shadow:0 2px 12px rgba(0,0,0,.05); transition:border-color .15s, box-shadow .15s; }
   .composer:focus-within { border-color:var(--mute); box-shadow:0 4px 20px rgba(0,0,0,.08); }
   .composer textarea { width:100%; resize:none; max-height:200px; background:transparent; color:inherit; border:none; padding:2px 2px 10px; font:inherit; outline:none; }
   .crow { display:flex; align-items:center; gap:6px; } .crow .sp { flex:1; }
@@ -227,7 +229,7 @@
         <span class="sp"></span>
         <select id="model" title="Model" hidden></select>
         <input type="hidden" id="effort" value="">
-        <span class="mpwrap"><button id="modelbtn" class="mbtn" title="Model and thinking effort (double-click to re-check access)"><span id="mlab">model</span><svg class="i "><use href="#i-chev"/></svg></button>
+        <span class="mpwrap"><button id="modelbtn" class="mbtn" title="Model and thinking effort (double-click to re-check access)"><span id="mlab">model</span></button>
           <div class="menu mpmenu" id="mpmenu" hidden></div></span>
         <button id="voice" class="ic ghost" title="Voice mode: talk, it answers out loud"><svg class="i "><use href="#i-wave"/></svg></button>
         <button id="mic" class="ic ghost" title="Dictate (click to start/stop)"><svg class="i "><use href="#i-mic"/></svg></button>
