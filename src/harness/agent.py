@@ -182,7 +182,12 @@ def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None
         queued = [] if (stop and stop.is_set()) else _drain(inbox)  # delivered with the tool results
         for t in queued:
             emit({"type": "user", "text": t})
-        s["messages"].append({"role": "user", "parts": results + [{"text": t} for t in queued]})
+        if queued:
+            # Gemini endpoints can reject a turn mixing functionResponse and text parts (HTTP 400), so the queued
+            # message rides inside the last tool result instead.
+            note = "\n\n[The user sent this while you were working - read it and adapt]:\n" + "\n".join(queued)
+            results[-1]["functionResponse"]["response"]["output"] += note
+        s["messages"].append({"role": "user", "parts": results})
         store.save(s)
     else:
         emit({"type": "text", "text": f"(stopped after {config.MAX_STEPS} steps; say 'continue' to go on)"})

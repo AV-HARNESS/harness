@@ -153,7 +153,7 @@ def test_queued_message_is_delivered_with_tool_results_and_agent_continues(sessi
     agent.run_turn(session, "go", events.append, None, inbox)
     assert {"type": "user", "text": "also add tests"} in events
     delivered = session["messages"][2]["parts"]
-    assert "functionResponse" in delivered[0] and delivered[-1] == {"text": "also add tests"}
+    assert len(delivered) == 1 and "also add tests" in delivered[0]["functionResponse"]["response"]["output"]
 
 
 @covers("R-LOOP-10")
