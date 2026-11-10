@@ -448,7 +448,7 @@ async function send(textOverride, editIndex) {
       else if (e.type === 'tool_result') toolResult(e.output);
       else if (e.type === 'user') { drawQueued(); add('user', md(e.text)); }
       else if (e.type === 'notice') { add('sys', esc(e.text)); if ([...$('model').options].some(o => o.value === e.model)) { $('model').value = e.model; syncModelBtn(); } }
-      else if (e.type === 'usage') setTok(e.prompt_tokens);
+      else if (e.type === 'usage') { setTok(e.prompt_tokens); if (e.secs) $('tok').title = `last model call: ${e.secs}s`; }
       else if (e.type === 'compacted') add('sys', 'Context compacted into a summary.');
       else if (e.type === 'error') add('err', esc(e.error) + (e.ref ? ` <a href="/api/log?ref=${e.ref}" target="_blank">View details</a>` : ''));
     }

@@ -150,7 +150,7 @@ def test_openai_translation_roundtrip(fake, monkeypatch):
     assert b["tools"][0]["function"]["parameters"]["properties"]["a"]["type"] == "string"  # types lowercased
     assert c["parts"] == [{"text": "hi"}, {"functionCall": {"name": "t", "args": {"a": "2"}}},
                           {"functionCall": {"name": "t", "args": {}}}]
-    assert usage == {"promptTokenCount": 7}
+    assert usage["promptTokenCount"] == 7 and "secs" in usage
 
 
 @covers("R-PROV-04")
