@@ -147,3 +147,25 @@ def test_pencil_edits_a_sent_message_and_reruns_from_there(app):
         saved = api("GET", f"/api/sessions/{s0['id']}")["messages"]
         assert [m["parts"][0]["text"] for m in saved if m["role"] == "user" and "text" in m["parts"][0]] == ["EDIT-first", "EDIT-changed"]
         browser.close()
+
+
+@covers("R-UI-06")
+def test_sidebar_lists_projects_and_autohides(app):
+    base, model, projects, api = app
+    (p0, s0), (p1, s1) = projects
+    with playwright.sync_playwright() as pw:
+        browser = pw.chromium.launch(executable_path=CHROME, args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 1100, "height": 700})
+        page.goto(f"{base}/#p={p0['id']}&s={s0['id']}")
+        page.wait_for_selector("#plist .pr.on")
+        names = page.eval_on_selector_all("#plist .pr .pn", "els => els.map(e => e.textContent)")
+        assert p0["name"] in names and p1["name"] in names
+        page.click(f"#plist .pr[data-id='{p1['id']}']")
+        page.wait_for_selector(f"#plist .pr.on[data-id='{p1['id']}']")
+        page.click("#pinbtn")  # auto-hide on: sidebar slides out of view
+        page.wait_for_timeout(400)
+        assert page.eval_on_selector("aside", "e => e.getBoundingClientRect().right") <= 0
+        page.mouse.move(2, 300)  # hover the left edge: it comes back
+        page.wait_for_timeout(400)
+        assert page.eval_on_selector("aside", "e => e.getBoundingClientRect().left") >= 0
+        browser.close()
