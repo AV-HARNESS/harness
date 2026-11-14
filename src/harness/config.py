@@ -131,3 +131,4 @@ DRY_RUN = os.environ.get("HARNESS_DRY_RUN", "0") == "1"
 CONFINE = os.environ.get("HARNESS_CONFINE", "1") != "0"
 
 AUTO_TITLE = os.environ.get("HARNESS_AUTO_TITLE", "1") != "0"  # model-written session titles (one small extra call per session)
+STREAM = os.environ.get("HARNESS_STREAM", "1") != "0"  # show replies as they are written (falls back automatically if the endpoint refuses)

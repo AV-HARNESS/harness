@@ -28,6 +28,59 @@ def _post(url: str, headers: dict, body: dict, retries: int = 4) -> dict:
         return r.json()
 
 
+_NO_STREAM: set[str] = set()  # endpoints that refused streaming once; they use plain requests from then on
+
+
+def _stream_events(url: str, headers: dict, body: dict, retries: int = 4):
+    """POST and yield the JSON payload of each server-sent-event line as it arrives."""
+    import json
+    delay = 2.0
+    for attempt in range(retries + 1):
+        r = requests.post(url, json=body, headers=headers, timeout=300, stream=True)
+        if r.status_code in (429, 500, 502, 503, 504) and attempt < retries:
+            r.close()
+            time.sleep(delay)
+            delay *= 2
+            continue
+        if not r.ok:
+            text = r.text[:1500]
+            r.close()
+            raise RuntimeError(f"HTTP {r.status_code} from {url.split('?')[0]}: {text}")
+        break
+    seen = False
+    try:
+        for raw in r.iter_lines(chunk_size=1):  # small chunks: deliver each event the moment it arrives
+            line = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
+            if not line.startswith("data:"):
+                continue
+            payload = line[5:].strip()
+            if payload and payload != "[DONE]":
+                seen = True
+                yield json.loads(payload)
+    finally:
+        r.close()
+    if not seen:
+        raise RuntimeError("stream returned no events")
+
+
+def _with_stream_fallback(key: str, on_text, streamed, plain):
+    """Run streamed(on_text) when allowed; if the endpoint rejects streaming before any text arrived, remember
+    that and fall back to the plain request so a gateway without streaming still works."""
+    if not on_text or key in _NO_STREAM:
+        return plain()
+    got = []
+    def cb(d):
+        got.append(1)
+        on_text(d)
+    try:
+        return streamed(cb)
+    except Exception as e:
+        if got or not str(e).startswith(("HTTP 4", "stream returned")):
+            raise
+        _NO_STREAM.add(key)
+        return plain()
+
+
 def _lower_types(schema):
     if isinstance(schema, dict):
         return {k: (v.lower() if k == "type" and isinstance(v, str) else _lower_types(v)) for k, v in schema.items()}
@@ -80,7 +133,7 @@ def _audit(alias, spec, contents, system, tools, counts) -> None:
 # ---- public entry point ----
 
 def generate(alias: str, contents: list, system: str = "", tools: list | None = None,
-             retries: int = 4, effort: str = "") -> tuple[dict, dict, dict]:
+             retries: int = 4, effort: str = "", on_text=None) -> tuple[dict, dict, dict]:
     from .gemini import generate as _g
     from .openai import generate as _o
     from .anthropic import generate as _a
@@ -106,7 +159,7 @@ def generate(alias: str, contents: list, system: str = "", tools: list | None = 
         raise RuntimeError(f"Unknown provider '{provider}'. Use one of: gemini, openai, anthropic")
     import time
     t0 = time.monotonic()
-    content, usage, cand = fn(spec, contents, system, tools, retries)
+    content, usage, cand = fn(spec, contents, system, tools, retries, **({"on_text": on_text} if on_text and config.STREAM else {}))
     secs = round(time.monotonic() - t0, 1)
     usage = {**usage, "secs": secs}  # wall time of this model call, retries included
     from .. import errors
