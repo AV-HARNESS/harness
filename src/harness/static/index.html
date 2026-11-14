@@ -58,8 +58,6 @@
   .pmenu .pi2:hover { background:var(--hover); } .pmenu .pi2 .av { width:26px; height:26px; border-radius:8px; font-size:12px; }
   .pmenu .pi2 .pt b { font-size:13.5px; } .pmenu hr { border:none; border-top:1px solid var(--line); margin:6px 4px; }
   .menu.pmenu .act { display:flex; align-items:center; gap:10px; padding:8px 10px; color:var(--ink); } .pmenu .act .i { color:var(--mute); }
-  #new { width:100%; padding:10px 12px; font-weight:600; border-radius:12px; display:flex; align-items:center; justify-content:center; gap:7px; }
-  #new .i { width:16px; height:16px; stroke-width:2.2; }
   .sec { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--mute); font-weight:600; padding:0 8px; display:flex; justify-content:space-between; align-items:center; }
   #list { flex:1; overflow:auto; margin:-4px -6px 0; padding:0 6px; min-height:60px; }
   .s { position:relative; padding:9px 12px; border-radius:10px; cursor:pointer; margin-bottom:2px; border:1px solid transparent; }
@@ -180,6 +178,26 @@
   .chips { display:flex; flex-wrap:wrap; gap:6px; padding-bottom:8px; }
   .chip { background:var(--panel); border-radius:8px; padding:3px 9px; font-size:12px; display:flex; gap:7px; align-items:center; }
   .chip b { cursor:pointer; color:var(--mute); font-weight:400; display:grid; } .chip b .i { width:12px; height:12px; }
+  /* ---------- minimal sidebar (flat rows, muted collapsible headers, no cards) ---------- */
+  aside { gap:4px; padding:14px 10px 10px; }
+  .brand { padding:2px 4px 8px; gap:8px; font-weight:600; flex-direction:row-reverse; justify-content:flex-end; }
+  .brand .word { font-size:19px; letter-spacing:-.01em; } .brand .ghostb { margin:0; }
+  #new.nav { width:100%; display:flex; align-items:center; gap:10px; padding:8px 10px; border:none; background:transparent; color:var(--ink); font-size:14.5px; font-weight:500; border-radius:10px; justify-content:flex-start; box-shadow:none; }
+  #new.nav:hover { background:var(--hover); } #new.nav .i { width:18px; height:18px; stroke-width:2; color:var(--ink); }
+  .sec { text-transform:none; letter-spacing:0; font-size:13px; font-weight:500; color:var(--mute); padding:12px 10px 4px; } 
+  .sec .lab { display:flex; align-items:center; gap:4px; cursor:pointer; user-select:none; flex:1; } .sec .lab:hover { color:var(--ink); }
+  .sec .ch { width:13px; height:13px; transition:transform .12s; } .sec.shut .ch { transform:rotate(-90deg); }
+  .sec button { opacity:0; transition:opacity .1s; } aside:hover .sec button { opacity:1; }
+  #plist, #list { margin:0 -2px; padding:0 2px; }
+  .pr { padding:7px 10px; gap:8px; margin:0; border-radius:10px; box-shadow:none !important; background:transparent; }
+  .pr .pn { font-size:14.5px; font-weight:400; } .pr.on { background:var(--hover); } .pr.on .pn { font-weight:500; }
+  .pr:hover { background:var(--hover); }
+  .s { padding:7px 10px; margin:0; border:none !important; border-radius:10px; box-shadow:none !important; background:transparent; }
+  .s::before { display:none !important; } .s:hover, .s.on { background:var(--hover); }
+  .s .t { font-size:14.5px; font-weight:400; } .s.on .t { font-weight:500; } .s .m { display:none; } .s .x { top:7px; }
+  #blocks { border-top:none; padding-top:0; }
+  .b { padding:6px 10px; font-size:14px; color:var(--ink); } .b:hover { background:var(--hover); } .b small { display:none; }
+  .empty { font-size:13px; padding:4px 10px; }
 </style>
 </head>
 <body>
@@ -202,14 +220,14 @@
 </defs></svg>
 <div id="edge"></div>
 <aside>
-  <div class="brand"><span class="logo"><svg viewBox="0 0 32 32"><path d="M9 22l7-12 7 12" stroke="#fff" stroke-width="3.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Harness<button id="pinbtn" class="ghostb" title="Auto-hide sidebar"><svg class="i " viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></button></div>
-  <div class="sec">Projects <button id="pnew" title="New project"><svg class="i "><use href="#i-plus"/></svg></button></div>
+  <div class="brand"><button id="pinbtn" class="ghostb" title="Auto-hide sidebar"><svg class="i " viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></button><span class="word">Harness</span></div>
+  <button id="new" class="nav" title="New session"><svg class="i "><use href="#i-plus"/></svg>New session</button>
+  <div class="sec" data-c="plist"><span class="lab">Projects <svg class="i ch"><use href="#i-chev"/></svg></span><button id="pnew" title="New project"><svg class="i "><use href="#i-plus"/></svg></button></div>
   <div id="plist"></div>
   <div class="menu pmenu" id="projmenu" hidden><button class="act" id="prename"><svg class="i "><use href="#i-pen"/></svg>Rename project&hellip;</button><button class="act" id="pedit"><svg class="i "><use href="#i-folder"/></svg>Change project folder&hellip;</button></div>
-  <button id="new" class="primary"><svg class="i "><use href="#i-plus"/></svg>New session</button>
-  <div class="sec">Sessions</div>
+  <div class="sec" data-c="list"><span class="lab">Sessions <svg class="i ch"><use href="#i-chev"/></svg></span></div>
   <div id="list"></div>
-  <div id="blocks"><div class="sec">Context blocks <button id="bnew" title="New block"><svg class="i "><use href="#i-plus"/></svg></button></div><div id="blist"></div></div>
+  <div id="blocks"><div class="sec" data-c="blist"><span class="lab">Context blocks <svg class="i ch"><use href="#i-chev"/></svg></span><button id="bnew" title="New block"><svg class="i "><use href="#i-plus"/></svg></button></div><div id="blist"></div></div>
 </aside>
 <dialog id="bdlg">
   <input id="bname" placeholder="block name (letters, digits, - _)">
@@ -362,10 +380,11 @@ function setTok(n) { $('tok').textContent = n ? `${(n/1000).toFixed(1)}k ctx` : 
 async function loadList() {
   const ss = await api('GET', '/api/sessions?project=' + proj.id);
   $('list').innerHTML = '';
-  if (!ss.length) $('list').innerHTML = '<div class="empty">No sessions yet. Start one with the button above.</div>';
+  if (!ss.length) $('list').innerHTML = '<div class="empty">No sessions yet. Start one with + New session.</div>';
   for (const s of ss) {
     const d = document.createElement('div'); d.className = 's' + (cur && cur.id === s.id ? ' on' : '');
-    d.innerHTML = `<div class="t">${esc(s.title)}</div><div class="m">${esc(s.model || '')} &middot; ${ago(s.updated)}</div><button class="x" title="Delete">${SVG('x')}</button>`;
+    d.title = `${s.model || ''} · ${ago(s.updated)}`;
+    d.innerHTML = `<div class="t">${esc(s.title)}</div><button class="x" title="Delete">${SVG('x')}</button>`;
     d.onclick = () => open(s.id);
     d.querySelector('.t').ondblclick = async e => {  // double-click a session title to rename it
       e.stopPropagation(); const n = prompt('Rename session', s.title);
@@ -515,7 +534,7 @@ async function loadBlocks() {
   $('blist').innerHTML = '';
   for (const b of bs) {
     const d = document.createElement('div'); d.className = 'b';
-    d.innerHTML = `<span>${esc(b.name)}</span><small>${b.content.length}</small>`;
+    d.title = b.content.length + ' chars'; d.innerHTML = `<span>${esc(b.name)}</span>`;
     d.onclick = () => editBlock(b.name, b.content); $('blist').appendChild(d);
   }
   if (!bs.length) $('blist').innerHTML = '<div class="empty">None yet. The agent can create them, or click +</div>';
@@ -547,7 +566,7 @@ const hue = n => HUES[[...n].reduce((a, c) => a + c.charCodeAt(0), 0) % HUES.len
 const avatar = p => `<span class="av" style="background:${hue(p.name)}">${esc((p.name[0] || '?').toUpperCase())}</span>`;
 const short = r => r.split(/[\\/]/).filter(Boolean).slice(-2).join('/') || r;
 function drawProj() {
-  $('plist').innerHTML = projects.map(p => `<div class="pr${p.id === proj.id ? ' on' : ''}" data-id="${esc(p.id)}" title="${esc(p.root)}">${avatar(p)}<span class="pn">${esc(p.name)}</span>${p.id === proj.id ? '<button class="pdots" title="Rename / change folder">&hellip;</button>' : ''}</div>`).join('');
+  $('plist').innerHTML = projects.map(p => `<div class="pr${p.id === proj.id ? ' on' : ''}" data-id="${esc(p.id)}" title="${esc(p.root)}"><span class="pn">${esc(p.name)}</span>${p.id === proj.id ? '<button class="pdots" title="Rename / change folder">&hellip;</button>' : ''}</div>`).join('');
   $('plist').querySelectorAll('.pr').forEach(r => r.onclick = () => { if (r.dataset.id !== proj.id) switchProject(r.dataset.id); });
   const d = $('plist').querySelector('.pdots');
   if (d) d.onclick = e => { e.stopPropagation(); const b = d.getBoundingClientRect(), m = $('projmenu');
@@ -556,6 +575,9 @@ function drawProj() {
 }
 $('pnew').onclick = () => newProject();
 $('prename').onclick = renameProject; $('pedit').onclick = changeFolder;
+// collapsible sections (Projects / Sessions / Context blocks)
+document.querySelectorAll('aside .sec[data-c]').forEach(h => h.querySelector('.lab').onclick = () => {
+  const box = $(h.dataset.c); box.hidden = !box.hidden; h.classList.toggle('shut', box.hidden); });
 // auto-hide sidebar (remembered per browser)
 let peekT = 0;
 function setAutoHide(on) {
