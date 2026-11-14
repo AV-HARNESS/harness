@@ -129,3 +129,5 @@ DRY_RUN = os.environ.get("HARNESS_DRY_RUN", "0") == "1"
 
 # file tools may only touch the linked project folder (symlinks and .. are resolved). Set 0 to allow anywhere.
 CONFINE = os.environ.get("HARNESS_CONFINE", "1") != "0"
+
+AUTO_TITLE = os.environ.get("HARNESS_AUTO_TITLE", "1") != "0"  # model-written session titles (one small extra call per session)

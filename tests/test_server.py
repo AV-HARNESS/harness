@@ -383,3 +383,14 @@ def test_edit_sent_message_cuts_history_and_reruns(client, session, fake):
     # a model message, or an index out of range, is not editable
     assert client.post(f"/api/sessions/{sid}/chat", json={"text": "x", "edit_index": 1}).status_code == 400
     assert client.post(f"/api/sessions/{sid}/chat", json={"text": "x", "edit_index": 99}).status_code == 400
+
+
+@covers("R-LOOP-15")
+def test_user_renamed_session_keeps_its_name(client, session, fake, monkeypatch):
+    from harness import config
+    monkeypatch.setattr(config, "AUTO_TITLE", True)
+    sid = session["id"]
+    assert client.patch(f"/api/sessions/{sid}", json={"title": "My name"}).status_code == 200
+    assert store.load(sid).get("title_auto") is False
+    server._retitle(sid)
+    assert store.load(sid)["title"] == "My name" and fake.requests == []

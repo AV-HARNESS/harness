@@ -108,6 +108,22 @@ def build_system(project: dict, s: dict) -> str:
         system += "\n\n### session instructions\n" + s["instructions"]
     return system
 
+def auto_title(s: dict) -> str | None:
+    """A short descriptive title (3-6 words) for the session from its first exchange, or None."""
+    first = next((" ".join(p["text"] for p in m["parts"] if "text" in p) for m in s["messages"] if _is_user_text(m)), "")
+    answer = next((" ".join(p["text"] for p in m["parts"] if p.get("text") and not p.get("thought"))
+                   for m in s["messages"] if m["role"] == "model"), "")
+    if not first.strip() or not answer.strip():
+        return None
+    ask = ("Write a 3-6 word title for this conversation, like a document title (Title Case, no quotes, no trailing "
+           "punctuation). Reply with the title only.\n\nUser: " + first[:600] + "\n\nAssistant: " + answer[:600])
+    content, _, _ = llm.generate(s["model"], [{"role": "user", "parts": [{"text": ask}]}],
+                                 "You write short, specific conversation titles.", None, effort="low")
+    title = next((p["text"] for p in content["parts"] if p.get("text") and not p.get("thought")), "").strip()
+    title = title.splitlines()[0].strip().strip("\"'`*#. ")[:60] if title else ""
+    return title or None
+
+
 Emit = Callable[[dict], None]
 
 
@@ -189,6 +205,7 @@ def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None
     s["messages"].append({"role": "user", "parts": [{"text": text}]})
     if s["title"] == "New session":
         s["title"] = text.strip().splitlines()[0][:50] or "New session"
+        s["title_auto"] = True  # a stand-in until auto_title() writes a proper one
     store.save(s)
 
     for _ in range(config.MAX_STEPS):
