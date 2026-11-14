@@ -33,15 +33,27 @@
   .brand { display:flex; align-items:center; gap:10px; padding:0 6px; font-weight:650; font-size:16px; letter-spacing:-.01em; }
   .logo { width:28px; height:28px; border-radius:8px; background:var(--accent); display:grid; place-items:center; }
   .logo svg { width:16px; height:16px; }
-  .proj { position:relative; }
-  .pbtn { width:100%; display:flex; align-items:center; gap:11px; padding:9px 10px; text-align:left; background:var(--card); border:1px solid var(--line); border-radius:14px; box-shadow:0 1px 2px rgba(0,0,0,.04); }
-  .pbtn:hover { border-color:var(--mute); background:var(--card); }
   .av { width:34px; height:34px; border-radius:10px; display:grid; place-items:center; color:#fff; font-weight:700; font-size:15px; flex-shrink:0; background:var(--accent); }
   .pt { flex:1; min-width:0; display:flex; flex-direction:column; line-height:1.25; }
   .pt b { font-size:14.5px; font-weight:620; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .menu .pt small, .pt small { padding:0; font-size:11.5px; color:var(--mute); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .pbtn .i { width:16px; height:16px; color:var(--mute); }
-  .menu.pmenu { top:calc(100% + 6px); bottom:auto; left:0; right:0; min-width:0; max-height:320px; overflow:auto; }
+  .brand { }
+  .brand .ghostb { margin-left:auto; }
+  .ghostb[hidden] { display:none; }
+  .ghostb { border:none; background:transparent; color:var(--mute); padding:5px; border-radius:8px; display:grid; place-items:center; } .ghostb:hover { background:var(--hover); color:var(--ink); } .ghostb .i { width:17px; height:17px; }
+  #plist { max-height:210px; overflow:auto; margin:-6px -6px 0; padding:0 6px; flex-shrink:0; }
+  .pr { position:relative; display:flex; align-items:center; gap:10px; padding:6px 8px; border-radius:10px; cursor:pointer; margin-bottom:1px; }
+  .pr:hover { background:var(--hover); } .pr.on { background:var(--card); box-shadow:0 1px 2px rgba(0,0,0,.05); }
+  .pr .av { width:24px; height:24px; border-radius:7px; font-size:11.5px; } .pr .pn { flex:1; min-width:0; font-size:14px; font-weight:540; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .pr.on .pn { font-weight:640; }
+  .pr .pdots { opacity:0; border:none; background:transparent; color:var(--mute); padding:0 6px; font-size:16px; line-height:1; border-radius:6px; } .pr.on .pdots, .pr:hover .pdots { opacity:1; } .pr .pdots:hover { color:var(--ink); background:var(--hover); }
+  .sec button { border:none; background:transparent; color:var(--mute); padding:2px 4px; border-radius:6px; } .sec button:hover { color:var(--ink); background:var(--hover); } .sec .i { width:15px; height:15px; }
+  /* auto-hide: sidebar slides out; hover the left edge (or the header button) to bring it back */
+  #edge { display:none; }
+  body.autohide aside { position:fixed; left:0; top:0; bottom:0; z-index:30; transform:translateX(-102%); transition:transform .18s ease; }
+  body.autohide.peek aside { transform:none; box-shadow:6px 0 28px rgba(0,0,0,.14); }
+  body.autohide #edge { display:block; position:fixed; left:0; top:0; bottom:0; width:10px; z-index:29; }
+  body.autohide #pinbtn { color:var(--accent); }
+  .menu.pmenu { position:fixed; bottom:auto; min-width:230px; z-index:40; }
   .menu.pmenu .pi2 { display:flex; align-items:center; gap:10px; padding:7px 9px; border-radius:9px; cursor:pointer; border:none; width:100%; }
   .pmenu .pi2:hover { background:var(--hover); } .pmenu .pi2 .av { width:26px; height:26px; border-radius:8px; font-size:12px; }
   .pmenu .pi2 .pt b { font-size:13.5px; } .pmenu hr { border:none; border-top:1px solid var(--line); margin:6px 4px; }
@@ -188,12 +200,12 @@
 <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.7 3.9 5.7 3.9 9s-1.3 6.3-3.9 9c-2.6-2.7-3.9-5.7-3.9-9S9.4 5.7 12 3Z"/></symbol>
 <symbol id="i-swap" viewBox="0 0 24 24"><path d="M7 4L3.5 7.5 7 11M3.5 7.5h13M17 13l3.5 3.5L17 20M20.5 16.5h-13"/></symbol>
 </defs></svg>
+<div id="edge"></div>
 <aside>
-  <div class="brand"><span class="logo"><svg viewBox="0 0 32 32"><path d="M9 22l7-12 7 12" stroke="#fff" stroke-width="3.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Harness</div>
-  <div class="proj">
-    <button id="projbtn" class="pbtn" title="Switch project"><span class="av" id="pav">D</span><span class="pt"><b id="pname">default</b><small id="rootp"></small></span><svg class="i "><use href="#i-chev"/></svg></button>
-    <div class="menu pmenu" id="projmenu" hidden></div>
-  </div>
+  <div class="brand"><span class="logo"><svg viewBox="0 0 32 32"><path d="M9 22l7-12 7 12" stroke="#fff" stroke-width="3.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Harness<button id="pinbtn" class="ghostb" title="Auto-hide sidebar"><svg class="i " viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></button></div>
+  <div class="sec">Projects <button id="pnew" title="New project"><svg class="i "><use href="#i-plus"/></svg></button></div>
+  <div id="plist"></div>
+  <div class="menu pmenu" id="projmenu" hidden><button class="act" id="prename"><svg class="i "><use href="#i-pen"/></svg>Rename project&hellip;</button><button class="act" id="pedit"><svg class="i "><use href="#i-folder"/></svg>Change project folder&hellip;</button></div>
   <button id="new" class="primary"><svg class="i "><use href="#i-plus"/></svg>New session</button>
   <div class="sec">Sessions</div>
   <div id="list"></div>
@@ -206,6 +218,7 @@
 </dialog>
 <main>
   <header>
+    <button id="sidebtn" class="ghostb" title="Show sidebar" hidden><svg class="i " viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></button>
     <input id="title" placeholder="Session title">
     <button id="compact" title="Summarize older context">Compact</button>
     <span id="tok"></span>
@@ -534,14 +547,28 @@ const hue = n => HUES[[...n].reduce((a, c) => a + c.charCodeAt(0), 0) % HUES.len
 const avatar = p => `<span class="av" style="background:${hue(p.name)}">${esc((p.name[0] || '?').toUpperCase())}</span>`;
 const short = r => r.split(/[\\/]/).filter(Boolean).slice(-2).join('/') || r;
 function drawProj() {
-  $('pav').outerHTML = avatar(proj).replace('class="av"', 'class="av" id="pav"');
-  $('pname').textContent = proj.name; $('rootp').textContent = proj.root; $('projbtn').title = proj.root;
-  $('projmenu').innerHTML = projects.map(p => `<button class="pi2" data-id="${esc(p.id)}">${avatar(p)}<span class="pt"><b>${esc(p.name)}</b><small>${esc(short(p.root))}</small></span>${p.id === proj.id ? SVG('check') : ''}</button>`).join('')
-    + `<hr><button class="act" id="pnew">${SVG('plus')}New project&hellip;</button><button class="act" id="prename">${SVG('folder')}Rename project&hellip;</button><button class="act" id="pedit">${SVG('folder')}Change project folder&hellip;</button>`;
-  $('projmenu').querySelectorAll('.pi2').forEach(b => b.onclick = () => { $('projmenu').hidden = true; switchProject(b.dataset.id); });
-  $('pnew').onclick = newProject; $('pedit').onclick = changeFolder; $('prename').onclick = renameProject;
+  $('plist').innerHTML = projects.map(p => `<div class="pr${p.id === proj.id ? ' on' : ''}" data-id="${esc(p.id)}" title="${esc(p.root)}">${avatar(p)}<span class="pn">${esc(p.name)}</span>${p.id === proj.id ? '<button class="pdots" title="Rename / change folder">&hellip;</button>' : ''}</div>`).join('');
+  $('plist').querySelectorAll('.pr').forEach(r => r.onclick = () => { if (r.dataset.id !== proj.id) switchProject(r.dataset.id); });
+  const d = $('plist').querySelector('.pdots');
+  if (d) d.onclick = e => { e.stopPropagation(); const b = d.getBoundingClientRect(), m = $('projmenu');
+    if (!m.hidden) { m.hidden = true; return; } m.hidden = false; m.style.left = Math.min(b.left, innerWidth - 250) + 'px'; m.style.top = (b.bottom + 4) + 'px'; };
+  const on = $('plist').querySelector('.pr.on'); if (on) on.scrollIntoView({block: 'nearest'});
 }
-$('projbtn').onclick = e => { e.stopPropagation(); $('projmenu').hidden = !$('projmenu').hidden; };
+$('pnew').onclick = () => newProject();
+$('prename').onclick = renameProject; $('pedit').onclick = changeFolder;
+// auto-hide sidebar (remembered per browser)
+let peekT = 0;
+function setAutoHide(on) {
+  document.body.classList.toggle('autohide', on); document.body.classList.remove('peek'); $('sidebtn').hidden = !on;
+  $('pinbtn').title = on ? 'Pin sidebar' : 'Auto-hide sidebar'; try { localStorage.setItem('autohide', on ? '1' : '0'); } catch (e) {}
+}
+const peek = on => { clearTimeout(peekT); if (on) document.body.classList.add('peek'); else peekT = setTimeout(() => { if ($('projmenu').hidden && !document.activeElement.closest?.('aside input')) document.body.classList.remove('peek'); }, 280); };
+$('pinbtn').onclick = () => setAutoHide(!document.body.classList.contains('autohide'));
+$('sidebtn').onclick = () => peek(!document.body.classList.contains('peek'));
+$('edge').onmouseenter = () => peek(true);
+document.querySelector('aside').onmouseenter = () => clearTimeout(peekT);
+document.querySelector('aside').onmouseleave = () => { if (document.body.classList.contains('autohide')) peek(false); };
+try { setAutoHide(localStorage.getItem('autohide') === '1'); } catch (e) {}
 async function newProject() {
   $('projmenu').hidden = true;
   const name = prompt('Project name'); if (!name) return;

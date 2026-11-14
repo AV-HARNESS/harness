@@ -183,7 +183,7 @@ def test_linking_a_folder_changes_where_the_agent_works(client, session, fake, t
 def test_ui_has_composer_controls(client):
     html = client.get("/").text
     for el in ('id="plus"', 'id="menu"', 'id="m-folder"', 'id="m-attach"', 'id="m-instr"', 'id="model"', 'id="mic"',
-               'id="voice"', 'id="send"', 'id="fdlg"', 'id="froot"', 'id="places"', 'id="crumbs"', 'id="fback"', 'id="dx"', 'id="dok"', 'id="wave"', 'id="projbtn"', "className = 'steps live'", 'pend.shift()', 'id="projmenu"', 'id="i-mic"', 'id="i-wave"', "/api/fs", "SpeechRecognition", "speechSynthesis"):
+               'id="voice"', 'id="send"', 'id="fdlg"', 'id="froot"', 'id="places"', 'id="crumbs"', 'id="fback"', 'id="dx"', 'id="dok"', 'id="wave"', 'id="plist"', 'id="pinbtn"', "className = 'steps live'", 'pend.shift()', 'id="projmenu"', 'id="i-mic"', 'id="i-wave"', "/api/fs", "SpeechRecognition", "speechSynthesis"):
         assert el in html, el
     assert html.index('id="plus"') < html.index('id="model"') < html.index('id="mic"') < html.index('id="send"')  # layout order
 
