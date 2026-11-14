@@ -247,3 +247,29 @@ def test_request_never_ends_with_a_model_turn(session, fake):
     # run_turn always adds the user text first; simulate the guard by corrupting after append via a stop-free call
     agent.run_turn(s, "hi", lambda e: None)
     assert fake.requests[0]["body"]["contents"][-1]["role"] == "user"
+
+
+@covers("R-LOOP-14")
+def test_blocks_are_picked_per_prompt_and_followups_keep_them(project, session):
+    store.write_block(project["id"], "billing-api", "Stripe webhook handling and invoice retries. " + "x " * 2500)
+    store.write_block(project["id"], "ui-style", "Teal theme, sidebar layout and fonts. " + "y " * 2500)
+    store.write_block(project["id"], "deploy", "Release checklist and rollback steps. " + "z " * 2500)
+    ask = lambda text: session["messages"].append({"role": "user", "parts": [{"text": text}]})
+    ask("why do invoice retries fail on the stripe webhook?")
+    sysmsg = agent.build_system(project, session)
+    assert "### block: billing-api" in sysmsg and "### block: ui-style" not in sysmsg
+    assert "other blocks (not loaded" in sysmsg and "- ui-style: Teal theme" in sysmsg
+    ask("yes, do that")  # no usable words: previous selection stays
+    assert "### block: billing-api" in agent.build_system(project, session)
+    ask("update the sidebar layout")
+    s2 = agent.build_system(project, session)
+    assert "### block: ui-style" in s2 and "### block: billing-api" not in s2
+
+
+@covers("R-LOOP-14")
+def test_small_block_sets_load_whole(project, session):
+    store.write_block(project["id"], "a", "alpha notes")
+    store.write_block(project["id"], "b", "beta notes")
+    session["messages"].append({"role": "user", "parts": [{"text": "something unrelated"}]})
+    sysmsg = agent.build_system(project, session)
+    assert "alpha notes" in sysmsg and "beta notes" in sysmsg and "not loaded" not in sysmsg

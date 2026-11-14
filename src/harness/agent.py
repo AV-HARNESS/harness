@@ -1,4 +1,5 @@
 """The agent loop: send history -> run requested tools -> feed results back -> repeat."""
+import re
 import threading
 from pathlib import Path
 from typing import Callable
@@ -34,17 +35,75 @@ def _guide_section(root: str) -> str:
             f"updated as you learn more. {GUIDE_HOWTO}")
 
 
+SELECT_ABOVE, SELECT_BUDGET = 6000, 16000  # below SELECT_ABOVE chars of blocks, load them all; above, pick per prompt
+_WORD = re.compile(r"[a-z0-9_]{3,}")
+_STOP = frozenset("the and for that this with from have what when where which how why can you your are was were not but "
+                  "into about please just then them they there their will would should could also all any some more "
+                  "make use using get let yes okay sure continue proceed".split())
+
+
+def _words(text: str) -> list[str]:
+    return [w for w in _WORD.findall(text.lower()) if w not in _STOP]
+
+
+def _recent_user_text(s: dict, n: int = 2) -> str:
+    """The last couple of things the user actually typed (not tool results)."""
+    out = []
+    for m in reversed(s.get("messages", [])):
+        if _is_user_text(m):
+            out.append(" ".join(p["text"] for p in m["parts"] if "text" in p))
+            if len(out) == n:
+                break
+    return " ".join(reversed(out))
+
+
+def select_blocks(blocks: list[dict], texts: dict[str, str], s: dict) -> list[str] | None:
+    """Names of the blocks worth loading for the user's current request, best first; None = load everything.
+
+    Small block sets load whole. Otherwise blocks are ranked by keyword overlap with the recent prompt (block name
+    counts triple, rarer words count more). A prompt with no usable words ("yes, do that") keeps the selection from
+    the previous prompt, so follow-ups don't lose context.
+    """
+    if sum(len(x) for x in texts.values()) <= SELECT_ABOVE:
+        return None
+    q = _words(_recent_user_text(s))
+    if not q:
+        keep = [n for n in s.get("block_sel", []) if n in texts]
+        return keep or None
+    docs = {n: _words(n.replace("-", " ").replace("_", " ")) * 3 + _words(x) for n, x in texts.items()}
+    df = {w: sum(1 for d in docs.values() if w in d) for w in set(q)}
+    scored = []
+    for n, d in docs.items():
+        score = sum((1 + d.count(w) ** 0.5) / (1 + df[w]) for w in set(q) if w in d)
+        if n.lower() in " ".join(q) or n.lower().replace("-", " ") in _recent_user_text(s).lower():
+            score += 5  # the prompt names the block
+        if score > 0:
+            scored.append((score, n))
+    chosen = [n for _, n in sorted(scored, reverse=True)]
+    s["block_sel"] = chosen
+    return chosen
+
+
 def build_system(project: dict, s: dict) -> str:
     system = BASE_SYSTEM.format(name=project["name"], root=project["root"])
     system += _guide_section(project["root"])
+    blocks = store.list_blocks(project["id"])
+    texts = {b["name"]: store.read_block(project["id"], b["name"])[:MAX_BLOCK] for b in blocks}
+    chosen = select_blocks(blocks, texts, s)
+    order = list(texts) if chosen is None else chosen
+    budget = MAX_BLOCKS_TOTAL if chosen is None else min(MAX_BLOCKS_TOTAL, SELECT_BUDGET)
     used = 0
-    for b in store.list_blocks(project["id"]):
-        text = store.read_block(project["id"], b["name"])[:MAX_BLOCK]
-        if used + len(text) > MAX_BLOCKS_TOTAL:
-            system += f"\n\n### {b['name']}\n(omitted: context budget; use read_block)"
+    for name in order:
+        text = texts[name]
+        if used + len(text) > budget:
+            system += f"\n\n### {name}\n(omitted: context budget; use read_block)"
             continue
         used += len(text)
-        system += f"\n\n### block: {b['name']}\n{text}"
+        system += f"\n\n### block: {name}\n{text}"
+    skipped = [n for n in texts if n not in order]
+    if skipped:
+        system += ("\n\n### other blocks (not loaded for this request; use read_block if relevant)\n"
+                   + "\n".join(f"- {n}: {(texts[n].strip().splitlines() or [''])[0][:90]}" for n in skipped))
     if s.get("instructions"):
         system += "\n\n### session instructions\n" + s["instructions"]
     return system

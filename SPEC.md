@@ -16,6 +16,7 @@ Change behaviour => change this file and the test in the same commit.
 - **R-LOOP-11** If the project root has `AGENTS.md` (or `CLAUDE.md`) it is added to the system prompt and the agent is told to keep it updated; if neither exists the agent is told to create `AGENTS.md` once it understands the project.
 - **R-LOOP-12** Compaction never repeats on every step: after one, the next waits until the prompt has grown ~25% past its size right after it; and when one long turn is most of the context, it is cut inside the turn (keeping the last few steps, never splitting a tool call from its result).
 - **R-LOOP-13** Blank user/queued messages are ignored, and a model request never ends with a model turn (Gemini rejects it).
+- **R-LOOP-14** Context blocks are chosen per prompt: when blocks exceed ~6k chars, only those matching the recent user text (keyword overlap, block name weighted, name mentioned = boost) are loaded, the rest are listed with a first-line hint for `read_block`; a prompt with no usable words keeps the previous selection; small block sets always load whole.
 - **R-LOOP-06** Model "thought" parts are never shown to the user, and are kept verbatim in history (thought signatures survive).
 - **R-LOOP-07** When the prompt exceeds `HARNESS_COMPACT_AT`, older turns are replaced by a summary and the last `HARNESS_KEEP_TURNS` user turns are kept verbatim.
 - **R-LOOP-08** A new session is titled from the first user message; the session is saved after every step.
