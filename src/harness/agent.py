@@ -220,7 +220,8 @@ def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None
         system = build_system(project, s)  # rebuilt each step so block edits apply immediately
         if s["messages"][-1]["role"] != "user":  # Gemini rejects requests ending with a model turn
             s["messages"].append({"role": "user", "parts": [{"text": "Continue."}]})
-        content, usage, _ = llm.generate(s["model"], s["messages"], system, tools.DECLARATIONS, effort=s.get("effort", ""))
+        content, usage, _ = llm.generate(s["model"], s["messages"], system, tools.DECLARATIONS, effort=s.get("effort", ""),
+                                             on_text=lambda d: emit({"type": "text_delta", "text": d}))
         s["messages"].append(content)
         s["prompt_tokens"] = usage.get("promptTokenCount", 0)
         if s.pop("just_compacted", False):

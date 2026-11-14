@@ -2,7 +2,7 @@
 import os
 
 from .. import auth, config, errors
-from . import _post
+from . import _post, _stream_events, _with_stream_fallback
 
 
 def gemini_mode(spec: dict) -> str:
@@ -33,7 +33,7 @@ def thinking_config(spec: dict) -> dict | None:
     return {"thinkingBudget": {"low": 1024, "medium": 8192, "high": -1}[effort]}  # 2.5: token budget, -1 = dynamic
 
 
-def generate(spec: dict, contents: list, system: str, tools, retries: int) -> tuple[dict, dict, dict]:
+def generate(spec: dict, contents: list, system: str, tools, retries: int, on_text=None) -> tuple[dict, dict, dict]:
     body: dict = {"contents": contents}
     if system:
         body["systemInstruction"] = {"parts": [{"text": system}]}
@@ -62,7 +62,29 @@ def generate(spec: dict, contents: list, system: str, tools, retries: int) -> tu
                f"/publishers/google/models/{spec['model']}:generateContent")
         headers = {"Authorization": f"Bearer {auth.get_access_token()}", **spec.get("headers", {})}
 
-    data = _post(url, headers, body, retries)
+    def streamed(cb):
+        parts, usage, last = [], {}, {}
+        for ev in _stream_events(url.replace(":generateContent", ":streamGenerateContent") + "?alt=sse", headers, body, retries):
+            usage = ev.get("usageMetadata") or usage
+            last = (ev.get("candidates") or [last])[0]
+            for p in (last.get("content") or {}).get("parts") or []:
+                if "text" in p and "functionCall" not in p:
+                    thought = bool(p.get("thought"))
+                    open_ = parts and "text" in parts[-1] and bool(parts[-1].get("thought")) == thought \
+                        and "thoughtSignature" not in parts[-1]
+                    if open_:  # merge chunks of one text part; a part that already carries its signature stays closed
+                        parts[-1]["text"] += p["text"]
+                        if p.get("thoughtSignature"):
+                            parts[-1]["thoughtSignature"] = p["thoughtSignature"]
+                    else:
+                        parts.append(dict(p))
+                    if p["text"] and not thought:
+                        cb(p["text"])
+                else:
+                    parts.append(p)
+        return {"candidates": [{**last, "content": {"parts": parts}}], "usageMetadata": usage}
+
+    data = _with_stream_fallback(url, on_text, streamed, lambda: _post(url, headers, body, retries))
     cands = data.get("candidates") or []
     if not cands:
         raise RuntimeError(f"No candidates returned: {str(data)[:800]}")
