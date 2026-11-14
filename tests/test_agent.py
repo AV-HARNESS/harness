@@ -273,3 +273,15 @@ def test_small_block_sets_load_whole(project, session):
     session["messages"].append({"role": "user", "parts": [{"text": "something unrelated"}]})
     sysmsg = agent.build_system(project, session)
     assert "alpha notes" in sysmsg and "beta notes" in sysmsg and "not loaded" not in sysmsg
+
+
+@covers("R-LOOP-15")
+def test_auto_title_is_short_and_cleaned(session, fake):
+    session["messages"] = [{"role": "user", "parts": [{"text": "can you review my invoice retry logic for stripe webhooks please"}]},
+                           {"role": "model", "parts": [{"text": "Sure, here is what I found..."}]}]
+    fake.push((200, gem(text('"Stripe Webhook Retry Review."\nextra'))))
+    assert agent.auto_title(session) == "Stripe Webhook Retry Review"
+    assert fake.requests[-1]["body"]["generationConfig"]  # asked at low effort
+    session["messages"] = session["messages"][:1]
+    assert agent.auto_title(session) is None  # no answer yet: nothing to title
+

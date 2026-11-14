@@ -238,11 +238,27 @@ def get_session(sid: str):
     return {**_get(sid), "running": sid in _busy}
 
 
+def _retitle(sid: str) -> None:
+    """After a session's first exchange, replace the cut-off first-message title with a short model-written one."""
+    try:
+        s = store.load(sid)
+        if not config.AUTO_TITLE or not s.get("title_auto") or sid in _busy:
+            return
+        title = agent.auto_title(s)
+        s = store.load(sid)  # fresh copy: never write back a stale one
+        if title and s.get("title_auto") and sid not in _busy:
+            s["title"], s["title_auto"] = title, False
+            store.save(s)
+    except Exception as e:  # titles are cosmetic: log, never surface
+        errors.report_ref(e, f"auto-title session={sid}")
+
+
 @app.patch("/api/sessions/{sid}")
 def patch_session(sid: str, b: Patch):
     s = _get(sid)
     if b.title is not None:
         s["title"] = b.title
+        s["title_auto"] = False  # a name the user chose is never replaced
     if b.model and config.get_model(b.model):
         s["model"] = b.model
     if b.instructions is not None:
@@ -341,6 +357,7 @@ def chat(sid: str, b: Chat):
             if left:
                 q.put({"type": "leftover", "texts": left})
             q.put({"type": "done"})
+            threading.Thread(target=_retitle, args=(sid,), daemon=True).start()
 
     threading.Thread(target=worker, daemon=True).start()
 

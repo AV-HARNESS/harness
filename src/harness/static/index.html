@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Harness</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231f7a78'/%3E%3Cpath d='M9 22l7-12 7 12' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<title>Harness · AI workbench</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231f7a78'/%3E%3Cpath d='M10 8v16M22 8v16M10 16h12' stroke='white' stroke-width='3.2' stroke-linecap='round' fill='none'/%3E%3Ccircle cx='16' cy='16' r='2.4' fill='%231f7a78' stroke='white' stroke-width='1.6'/%3E%3C/svg%3E">
 <style>
   :root {
     --bg:#f6f8f8; --side:#edf1f1; --panel:#e6ecec; --card:#fcfefe; --ink:#1c2222; --mute:#6b7776; --line:#dbe3e3;
@@ -198,6 +198,20 @@
   #blocks { border-top:none; padding-top:0; }
   .b { padding:6px 10px; font-size:14px; color:var(--ink); } .b:hover { background:var(--hover); } .b small { display:none; }
   .empty { font-size:13px; padding:4px 10px; }
+  /* ---------- polish ---------- */
+  aside { background:var(--side); border-right:1px solid var(--line); padding:16px 12px 12px; }
+  .brand { flex-direction:row; justify-content:flex-start; gap:10px; padding:2px 4px 14px; }
+  .brand .logo { width:30px; height:30px; border-radius:9px; box-shadow:0 1px 3px rgba(31,122,120,.35), inset 0 1px 0 rgba(255,255,255,.18); }
+  .brand .logo svg { width:18px; height:18px; } .brand .word { font-size:17px; font-weight:650; letter-spacing:-.015em; } .brand .ghostb { margin-left:auto; }
+  #new.nav { background:var(--card); border:1px solid var(--line); box-shadow:0 1px 2px rgba(0,0,0,.04); font-weight:550; margin-bottom:6px; }
+  #new.nav:hover { background:var(--card); border-color:var(--accent); } #new.nav .i { color:var(--accent); }
+  .sec { padding:16px 10px 5px; font-size:11.5px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--mute); }
+  .grp { font-size:11.5px; color:var(--mute); padding:10px 10px 3px; font-weight:500; }
+  .pr, .s { position:relative; } .pr.on::before, .s.on::before { content:""; display:block !important; position:absolute; left:0; top:8px; bottom:8px; width:3px; border-radius:3px; background:var(--accent); }
+  .pr.on, .s.on { background:var(--sel); } .pr.on .pn, .s.on .t { color:var(--ink); font-weight:560; }
+  .pr:hover:not(.on), .s:hover:not(.on) { background:var(--hover); }
+  .b { color:var(--mute); } .b:hover { color:var(--ink); }
+  #blocks { border-top:1px solid var(--line); margin-top:8px; padding-top:2px; }
 </style>
 </head>
 <body>
@@ -220,7 +234,7 @@
 </defs></svg>
 <div id="edge"></div>
 <aside>
-  <div class="brand"><button id="pinbtn" class="ghostb" title="Auto-hide sidebar"><svg class="i " viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></button><span class="word">Harness</span></div>
+  <div class="brand"><span class="logo"><svg viewBox="0 0 32 32"><path d="M10 8v16M22 8v16M10 16h12" stroke="#fff" stroke-width="3.2" stroke-linecap="round" fill="none"/><circle cx="16" cy="16" r="2.4" fill="#1f7a78" stroke="#fff" stroke-width="1.6"/></svg></span><span class="word">Harness</span><button id="pinbtn" class="ghostb" title="Auto-hide sidebar"><svg class="i " viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></button></div>
   <button id="new" class="nav" title="New session"><svg class="i "><use href="#i-plus"/></svg>New session</button>
   <div class="sec" data-c="plist"><span class="lab">Projects <svg class="i ch"><use href="#i-chev"/></svg></span><button id="pnew" title="New project"><svg class="i "><use href="#i-plus"/></svg></button></div>
   <div id="plist"></div>
@@ -308,6 +322,11 @@ const api = async (m, url, body) => {
   return r.json();
 };
 const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function tabTitle() { document.title = (cur && cur.title && cur.title !== 'New session' ? cur.title + ' · ' : '') + (cur && isRunning() ? '● ' : '') + 'Harness'; }
+function dayGroup(ts) {
+  const days = Math.floor((new Date().setHours(0,0,0,0) - new Date((ts || 0) * 1000).setHours(0,0,0,0)) / 864e5);
+  return days <= 0 ? 'Today' : days === 1 ? 'Yesterday' : days < 8 ? 'Previous 7 days' : days < 31 ? 'Previous 30 days' : 'Older';
+}
 function ago(ts) {
   const s = Math.max(0, Date.now() / 1000 - (ts || 0));
   if (s < 90) return 'just now'; if (s < 3600) return Math.round(s / 60) + 'm ago';
@@ -381,7 +400,10 @@ async function loadList() {
   const ss = await api('GET', '/api/sessions?project=' + proj.id);
   $('list').innerHTML = '';
   if (!ss.length) $('list').innerHTML = '<div class="empty">No sessions yet. Start one with + New session.</div>';
+  let lastGroup = '';
   for (const s of ss) {
+    const g = dayGroup(s.updated);
+    if (g !== lastGroup) { lastGroup = g; const h = document.createElement('div'); h.className = 'grp'; h.textContent = g; $('list').appendChild(h); }
     const d = document.createElement('div'); d.className = 's' + (cur && cur.id === s.id ? ' on' : '');
     d.title = `${s.model || ''} · ${ago(s.updated)}`;
     d.innerHTML = `<div class="t">${esc(s.title)}</div><button class="x" title="Delete">${SVG('x')}</button>`;
@@ -406,7 +428,7 @@ async function open(id) {
   clearTimeout(pollTimer); cur = s;
   paint();
   $('title').value = cur.title; $('model').value = cur.model; syncModelBtn(); setEffort(cur.effort || ''); $('instr').value = cur.instructions || '';
-  setTok(cur.prompt_tokens); setSend(isRunning()); drawQueued(); setHash(); loadList();
+  setTok(cur.prompt_tokens); setSend(isRunning()); drawQueued(); setHash(); loadList(); tabTitle();
   if (stash[id]) { $('in').value = stash[id]; delete stash[id]; }
   if (cur.running && !runningSids.has(id)) watch(id);  // running here in another tab or earlier: follow it live
 }
@@ -491,7 +513,7 @@ async function send(textOverride, editIndex) {
     cur = await api('GET', '/api/sessions/' + sid); if (here()) $('title').value = cur.title;
     if (voiceMode) speak(spoken);
   }
-  loadList();
+  loadList(); tabTitle(); setTimeout(async () => { await loadList(); tabTitle(); if (cur && cur.id === sid) { const t = (await api('GET', '/api/sessions/' + sid)).title; if (!$('title').matches(':focus')) $('title').value = t; } }, 5000);  // a model-written title lands a few seconds after the first reply
   if (leftover.length) { if (here()) send(leftover.join('\n\n')); else stash[sid] = leftover.join('\n\n'); }
 }
 

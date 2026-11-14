@@ -36,6 +36,7 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "PROJECTS_DIR", home / "projects")
     monkeypatch.setattr(config, "LEGACY_SESSIONS_DIR", home / "sessions")
     monkeypatch.setattr(config, "TOKEN_FILE", home / "token.json")
+    monkeypatch.setattr(config, "AUTO_TITLE", False)  # tests opt in; otherwise the background title call eats scripted replies
     monkeypatch.setattr(config, "MODELS", {k: dict(v) for k, v in DEFAULT_MODELS.items()})
     for name, val in dict(REDACT=True, REDACT_TERMS=[], ACCESS_TOKEN="", REFRESH_TOKEN="", TOKEN_URL="",
                           CLIENT_ID="", CLIENT_SECRET="", OAUTH_SCOPE="", OAUTH_AUDIENCE="", OAUTH_CLIENT_AUTH="body",
