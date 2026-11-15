@@ -4,7 +4,7 @@ import os
 
 from .. import errors
 
-from . import _post, _declarations, _lower_types, _text, _result_text
+from . import _post, _stream_events, _with_stream_fallback, _declarations, _lower_types, _text, _result_text
 
 
 def _key(spec: dict) -> str:
@@ -39,7 +39,7 @@ def _to_openai(system: str, contents: list) -> list:
     return msgs
 
 
-def generate(spec: dict, contents: list, system: str, tools, retries: int) -> tuple[dict, dict, dict]:
+def generate(spec: dict, contents: list, system: str, tools, retries: int, on_text=None) -> tuple[dict, dict, dict]:
     base = spec.get("base_url", "https://api.openai.com/v1").rstrip("/")
     headers = dict(spec.get("headers", {}))
     key = _key(spec)
@@ -58,7 +58,24 @@ def generate(spec: dict, contents: list, system: str, tools, retries: int) -> tu
                 params.pop("required", None)
             body["tools"].append({"type": "function", "function": {
                 "name": d["name"], "description": d["description"], "parameters": params}})
-    data = _post(f"{base}/chat/completions", headers, body, retries)
+    def streamed(cb):
+        text, calls, usage = [], {}, {}
+        sbody = {**body, "stream": True, "stream_options": {"include_usage": True}}
+        for ev in _stream_events(f"{base}/chat/completions", headers, sbody, retries):
+            usage = ev.get("usage") or usage
+            delta = ((ev.get("choices") or [{}])[0]).get("delta") or {}
+            if delta.get("content"):
+                text.append(delta["content"])
+                cb(delta["content"])
+            for tc in delta.get("tool_calls") or []:
+                c = calls.setdefault(tc.get("index", 0), {"function": {"name": "", "arguments": ""}})
+                f = tc.get("function") or {}
+                c["function"]["name"] += f.get("name") or ""
+                c["function"]["arguments"] += f.get("arguments") or ""
+        msg = {"content": "".join(text) or None, "tool_calls": [calls[i] for i in sorted(calls)]}
+        return {"choices": [{"message": msg}], "usage": usage}
+
+    data = _with_stream_fallback(base, on_text, streamed, lambda: _post(f"{base}/chat/completions", headers, body, retries))
     msg = (data.get("choices") or [{}])[0].get("message") or {}
     parts = []
     if msg.get("content"):

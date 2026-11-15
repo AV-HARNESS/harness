@@ -18,6 +18,7 @@ Change behaviour => change this file and the test in the same commit.
 - **R-LOOP-13** Blank user/queued messages are ignored, and a model request never ends with a model turn (Gemini rejects it).
 - **R-LOOP-14** Context blocks are chosen per prompt: when blocks exceed ~6k chars, only those matching the recent user text (keyword overlap, block name weighted, name mentioned = boost) are loaded, the rest are listed with a first-line hint for `read_block`; a prompt with no usable words keeps the previous selection; small block sets always load whole.
 - **R-LOOP-15** After a session's first reply, a short (3-6 word) title is written by the model at low effort in the background (HARNESS_AUTO_TITLE=0 disables); a title the user typed is never replaced.
+- **R-LOOP-16** While a model call streams, the loop emits `text_delta` events as text arrives and the usual final `text` event once the message is complete; history stores only the assembled message.
 - **R-LOOP-06** Model "thought" parts are never shown to the user, and are kept verbatim in history (thought signatures survive).
 - **R-LOOP-07** When the prompt exceeds `HARNESS_COMPACT_AT`, older turns are replaced by a summary and the last `HARNESS_KEEP_TURNS` user turns are kept verbatim.
 - **R-LOOP-08** A new session is titled from the first user message; the session is saved after every step.
@@ -37,6 +38,7 @@ Change behaviour => change this file and the test in the same commit.
 - **R-PROV-11** A model alias of the form `source/model-id` means the configured alias `source` with that model id, so any model an endpoint offers can be used without editing `models.json`.
 - **R-PROV-12** Keys come only from `.env`: built-in `openai`/`claude`/`flash`/`pro` aliases use whichever provider keys are set (so every provider you have a key for appears); a `models.json` entry without `api_key_env` uses its provider's standard key variable, and an entry holding a pasted key is ignored with a warning.
 - **R-PROV-13** A per-session thinking effort (low/medium/high, default = model's own) is sent as Gemini `thinkingLevel` (Gemini 3; Pro maps medium to high) or `thinkingBudget` (2.5), and as `reasoning_effort` only to OpenAI reasoning models; the UI selector next to the model picker saves it on the session.
+- **R-PROV-14** Replies stream: providers emit text as it arrives (Gemini streamGenerateContent SSE, OpenAI and Anthropic stream:true), assembling the same content/usage as a plain call (thought signatures preserved, tool-call arguments joined); an endpoint that refuses streaming before any text is remembered and uses plain requests (HARNESS_STREAM=0 turns it off).
 - **R-PROV-09** `models.json` adds aliases; entries whose model starts with `REPLACE` or alias starts with `_` are ignored.
 
 ## 3. Auth (`auth.py`)

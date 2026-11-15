@@ -310,3 +310,68 @@ def test_effort_maps_to_gemini_thinking_and_is_optional(fake, model):
     assert thinking_config({"model": "gemini-3.7-pro", "effort": "medium"}) == {"thinkingLevel": "high"}
     assert thinking_config({"model": "gemini-3.7-flash", "effort": "medium"}) == {"thinkingLevel": "medium"}
     assert thinking_config({"model": "gemini-3.7-flash"}) is None
+
+
+def _sse(*events):
+    return "".join("data: " + json.dumps(e) + "\n\n" for e in events), "text/event-stream"
+
+
+@covers("R-PROV-14")
+def test_gemini_streams_text_deltas_keeps_signature_and_usage(fake, model, monkeypatch):
+    monkeypatch.setattr(config, "STREAM", True)
+    body, ctype = _sse({"candidates": [{"content": {"parts": [{"text": "Hel"}]}}]},
+                       {"candidates": [{"content": {"parts": [{"text": "lo", "thoughtSignature": "SIG"}]}}]},
+                       {"candidates": [{"content": {"parts": [{"functionCall": {"name": "t", "args": {"a": "1"}}}]}}],
+                        "usageMetadata": {"promptTokenCount": 9}})
+    fake.push((200, body, ctype))
+    seen = []
+    content, usage, _ = providers.generate(model, HIST, "SYS", DECL, on_text=seen.append)
+    assert fake.requests[0]["path"].endswith(":streamGenerateContent?alt=sse")
+    assert seen == ["Hel", "lo"]
+    assert content["parts"] == [{"text": "Hello", "thoughtSignature": "SIG"}, {"functionCall": {"name": "t", "args": {"a": "1"}}}]
+    assert usage["promptTokenCount"] == 9
+
+
+@covers("R-PROV-14")
+def test_streaming_falls_back_once_when_the_endpoint_refuses(fake, model, monkeypatch):
+    from harness.providers import _NO_STREAM
+    monkeypatch.setattr(config, "STREAM", True)
+    _NO_STREAM.clear()
+    fake.push((404, "no such method"), (200, gem(text("plain"))), (200, gem(text("plain2"))))
+    seen = []
+    content, _, _ = providers.generate(model, HIST, on_text=seen.append)
+    assert content["parts"][0]["text"] == "plain" and seen == []
+    providers.generate(model, HIST, on_text=seen.append)  # remembered: goes straight to the plain request
+    assert [r["path"].split("?")[0].rsplit(":", 1)[1] for r in fake.requests] == ["streamGenerateContent", "generateContent", "generateContent"]
+    _NO_STREAM.clear()
+
+
+@covers("R-PROV-14")
+def test_openai_and_anthropic_stream_text_and_tool_calls(fake, monkeypatch):
+    monkeypatch.setattr(config, "STREAM", True)
+    monkeypatch.setenv("OAI_KEY", "sk-test-not-real-0000")
+    monkeypatch.setenv("ANT_KEY", "ant-not-a-real-key-0000")
+    monkeypatch.setitem(config.MODELS, "o", {"provider": "openai", "model": "gpt-x", "api_key_env": "OAI_KEY", "base_url": fake.url + "/v1"})
+    monkeypatch.setitem(config.MODELS, "a", {"provider": "anthropic", "model": "claude-x", "api_key_env": "ANT_KEY", "base_url": fake.url})
+    fake.push((200, *_sse(
+        {"choices": [{"delta": {"content": "Hi "}}]}, {"choices": [{"delta": {"content": "there"}}]},
+        {"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "x", "function": {"name": "t", "arguments": "{\"a\":"}}]}}]},
+        {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": "\"1\"}"}}]}}]},
+        {"choices": [], "usage": {"prompt_tokens": 11}})))
+    seen = []
+    c, usage, _ = providers.generate("o", HIST, "S", DECL, on_text=seen.append)
+    assert seen == ["Hi ", "there"] and usage["promptTokenCount"] == 11
+    assert c["parts"] == [{"text": "Hi there"}, {"functionCall": {"name": "t", "args": {"a": "1"}}}]
+    assert fake.requests[0]["body"]["stream"] is True
+    fake.push((200, *_sse(
+        {"type": "message_start", "message": {"usage": {"input_tokens": 5, "cache_read_input_tokens": 3}}},
+        {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}},
+        {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "He"}},
+        {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "y"}},
+        {"type": "content_block_start", "index": 1, "content_block": {"type": "tool_use", "id": "z", "name": "t"}},
+        {"type": "content_block_delta", "index": 1, "delta": {"type": "input_json_delta", "partial_json": "{\"a\": \"3\"}"}},
+        {"type": "message_delta", "usage": {"output_tokens": 4}})))
+    seen = []
+    c, usage, _ = providers.generate("a", HIST, "S", DECL, on_text=seen.append)
+    assert seen == ["He", "y"] and usage["promptTokenCount"] == 8
+    assert c["parts"] == [{"text": "Hey"}, {"functionCall": {"name": "t", "args": {"a": "3"}}}]

@@ -1,9 +1,10 @@
 """Anthropic Messages API provider."""
+import json
 import os
 
 from .. import errors
 
-from . import _post, _declarations, _lower_types, _text, _result_text
+from . import _post, _stream_events, _with_stream_fallback, _declarations, _lower_types, _text, _result_text
 
 
 def _key(spec: dict) -> str:
@@ -42,7 +43,7 @@ def _to_anthropic(contents: list) -> list:
     return msgs
 
 
-def generate(spec: dict, contents: list, system: str, tools, retries: int) -> tuple[dict, dict, dict]:
+def generate(spec: dict, contents: list, system: str, tools, retries: int, on_text=None) -> tuple[dict, dict, dict]:
     base = spec.get("base_url", "https://api.anthropic.com").rstrip("/")
     headers = {"x-api-key": _key(spec), "anthropic-version": "2023-06-01", **spec.get("headers", {})}
     body = {"model": spec["model"], "max_tokens": spec.get("max_tokens", 8192),
@@ -53,7 +54,38 @@ def generate(spec: dict, contents: list, system: str, tools, retries: int) -> tu
     if decls:
         body["tools"] = [{"name": d["name"], "description": d["description"],
                           "input_schema": _lower_types(d["parameters"])} for d in decls]
-    data = _post(f"{base}/v1/messages", headers, body, retries)
+    def streamed(cb):
+        blocks, usage = {}, {}
+        for ev in _stream_events(f"{base}/v1/messages", headers, {**body, "stream": True}, retries):
+            kind = ev.get("type")
+            if kind == "message_start":
+                usage.update((ev.get("message") or {}).get("usage") or {})
+            elif kind == "content_block_start":
+                b = dict(ev.get("content_block") or {})
+                if b.get("type") == "tool_use":
+                    b["_json"] = ""
+                blocks[ev["index"]] = b
+            elif kind == "content_block_delta":
+                d, b = ev.get("delta") or {}, blocks.setdefault(ev["index"], {"type": "text", "text": ""})
+                if d.get("type") == "text_delta":
+                    b["text"] = b.get("text", "") + d["text"]
+                    cb(d["text"])
+                elif d.get("type") == "input_json_delta":
+                    b["_json"] = b.get("_json", "") + d.get("partial_json", "")
+            elif kind == "message_delta":
+                usage.update(ev.get("usage") or {})
+        out = []
+        for i in sorted(blocks):
+            b = blocks[i]
+            if b.get("type") == "tool_use":
+                try:
+                    b["input"] = json.loads(b.pop("_json", "") or "{}")
+                except json.JSONDecodeError:
+                    b["input"] = {}
+            out.append(b)
+        return {"content": out, "usage": usage}
+
+    data = _with_stream_fallback(base, on_text, streamed, lambda: _post(f"{base}/v1/messages", headers, body, retries))
     parts = []
     for b in data.get("content", []):
         if b["type"] == "text" and b["text"]:

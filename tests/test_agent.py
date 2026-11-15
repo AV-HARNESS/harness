@@ -285,3 +285,18 @@ def test_auto_title_is_short_and_cleaned(session, fake):
     session["messages"] = session["messages"][:1]
     assert agent.auto_title(session) is None  # no answer yet: nothing to title
 
+
+
+@covers("R-LOOP-16")
+def test_text_arrives_as_deltas_then_the_final_text_event(session, fake, monkeypatch):
+    import json
+    from harness import config
+    monkeypatch.setattr(config, "STREAM", True)
+    ev = [{"candidates": [{"content": {"parts": [{"text": "Hello "}]}}]},
+          {"candidates": [{"content": {"parts": [{"text": "world"}]}}], "usageMetadata": {"promptTokenCount": 5}}]
+    fake.push((200, "".join("data: " + json.dumps(e) + "\n\n" for e in ev), "text/event-stream"))
+    events = []
+    agent.run_turn(session, "hi", events.append)
+    kinds = [(e["type"], e.get("text")) for e in events if e["type"] in ("text_delta", "text")]
+    assert kinds == [("text_delta", "Hello "), ("text_delta", "world"), ("text", "Hello world")]
+    assert session["messages"][-1]["parts"] == [{"text": "Hello world"}]

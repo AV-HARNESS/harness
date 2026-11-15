@@ -344,7 +344,7 @@ function add(cls, html) {
   const d = document.createElement('div'); d.className = 'msg ' + cls; d.innerHTML = html;
   $('msgs').appendChild(d); $('log').scrollTop = 1e9; return d;
 }
-let lastTool = null, spoken = '', files = [], voiceMode = false;
+let lastTool = null, spoken = '', files = [], voiceMode = false, live = null, liveRaw = '';
 const SVG = n => `<svg class="i"><use href="#i-${n}"/></svg>`;
 const setSend = on => { $('send').innerHTML = SVG(on ? 'stop' : 'up'); $('send').title = on ? 'Stop' : 'Send'; };
 let grp = null, grpCount = {}, pend = [];
@@ -497,7 +497,10 @@ async function send(textOverride, editIndex) {
       if (e.type === 'leftover') { leftover = e.texts; continue; }
       if (e.type === 'user') { const q = queuedBy[sid] || [], k = q.indexOf(e.text); if (k >= 0) q.splice(k, 1); }
       if (!here()) continue;  // another session is on screen now: the server keeps this one's history; it reloads when you return
-      if (e.type === 'text') { add('', md(e.text)); spoken += ' ' + e.text; }
+      if (e.type === 'text_delta') {  // the reply as it is written: grow one live bubble, then 'text' finalises it
+        if (!live) { live = add('', ''); liveRaw = ''; } liveRaw += e.text; live.innerHTML = md(liveRaw); $('log').scrollTop = 1e9;
+      }
+      else if (e.type === 'text') { if (live) { live.innerHTML = md(e.text); live = null; } else add('', md(e.text)); spoken += ' ' + e.text; }
       else if (e.type === 'tool_call') toolCall(e.name, e.args);
       else if (e.type === 'tool_result') toolResult(e.output);
       else if (e.type === 'user') { drawQueued(); add('user', md(e.text)); }
