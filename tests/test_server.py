@@ -79,7 +79,7 @@ def test_chat_streams_events(client, session, fake):
     ev = sse(r)
     assert [e["type"] for e in ev if e["type"] != "usage"] == ["tool_call", "tool_result", "text", "done"]
     assert "hi" in ev[2]["output"] if ev[2]["type"] == "tool_result" else True
-    assert store.load(session["id"])["title"] == "run it"
+    assert store.load(session["id"])["title"] == "Run It"
 
 
 @covers("R-SRV-03")
@@ -393,4 +393,4 @@ def test_user_renamed_session_keeps_its_name(client, session, fake, monkeypatch)
     assert client.patch(f"/api/sessions/{sid}", json={"title": "My name"}).status_code == 200
     assert store.load(sid).get("title_auto") is False
     server._retitle(sid)
-    assert store.load(sid)["title"] == "My name" and fake.requests == []
+    assert store.load(sid)["title"] == "My Name" and fake.requests == []

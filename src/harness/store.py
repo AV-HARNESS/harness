@@ -66,6 +66,24 @@ def _check_root(root) -> str:
     return str(r)
 
 
+_SMALL = frozenset("a an and as at but by for in of on or the to vs via with".split())
+
+
+def title_case(text: str) -> str:
+    """Project/session names are kept in Title Case: 'project roadmap' -> 'Project Roadmap'. Acronyms (WW, API),
+    words with inner capitals (iPhone) and small joiners (of, and) are left alone; extra spaces are collapsed."""
+    words = (text or "").split()
+    out = []
+    for i, w in enumerate(words):
+        if w.isupper() and len(w) > 1 or any(c.isupper() for c in w[1:]) or not w[0].isalpha():
+            out.append(w)
+        elif w.lower() in _SMALL and 0 < i < len(words) - 1:
+            out.append(w.lower())
+        else:
+            out.append(w[0].upper() + w[1:])
+    return " ".join(out)
+
+
 def create_project(name: str, root: str | None = None, model: str | None = None) -> dict:
     root = _check_root(root)
     base = pid = _slug(name)
@@ -75,7 +93,7 @@ def create_project(name: str, root: str | None = None, model: str | None = None)
     d = config.PROJECTS_DIR / pid
     (d / "blocks").mkdir(parents=True)
     (d / "sessions").mkdir()
-    p = {"id": pid, "name": name, "root": root, "model": model or config.DEFAULT_MODEL, "created": time.time()}
+    p = {"id": pid, "name": title_case(name), "root": root, "model": model or config.DEFAULT_MODEL, "created": time.time()}
     _write(d / "project.json", json.dumps(p, indent=2))
     return p
 
@@ -97,7 +115,7 @@ def list_projects() -> list[dict]:
 def update_project(pid: str, name=None, root=None, model=None) -> dict:
     p = get_project(pid)
     if name:
-        p["name"] = name
+        p["name"] = title_case(name)
     if root:
         p["root"] = _check_root(root)
     if model and config.get_model(model):
@@ -168,6 +186,8 @@ def _spath(sid: str) -> Path:
 
 
 def create(project: str, title: str = "New session", model: str | None = None, instructions: str = "") -> dict:
+    if title != "New session":
+        title = title_case(title)
     p = get_project(project)
     s = {
         "id": uuid.uuid4().hex[:10], "project": project, "title": title, "model": model or p["model"],

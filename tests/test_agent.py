@@ -27,7 +27,7 @@ def test_tool_loop_runs_tools_and_finishes(session, fake, project):
     last = fake.requests[1]["body"]["contents"][-1]
     assert "functionResponse" in last["parts"][0]
     saved = store.load(session["id"])
-    assert saved["title"] == "make a file" and saved["messages"][0]["parts"][0]["text"] == "make a file"
+    assert saved["title"] == "Make a File" and saved["messages"][0]["parts"][0]["text"] == "make a file"
 
 
 @covers("R-LOOP-01")

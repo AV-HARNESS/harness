@@ -247,7 +247,7 @@ def _retitle(sid: str) -> None:
         title = agent.auto_title(s)
         s = store.load(sid)  # fresh copy: never write back a stale one
         if title and s.get("title_auto") and sid not in _busy:
-            s["title"], s["title_auto"] = title, False
+            s["title"], s["title_auto"] = store.title_case(title), False
             store.save(s)
     except Exception as e:  # titles are cosmetic: log, never surface
         errors.report_ref(e, f"auto-title session={sid}")
@@ -257,7 +257,7 @@ def _retitle(sid: str) -> None:
 def patch_session(sid: str, b: Patch):
     s = _get(sid)
     if b.title is not None:
-        s["title"] = b.title
+        s["title"] = store.title_case(b.title)
         s["title_auto"] = False  # a name the user chose is never replaced
     if b.model and config.get_model(b.model):
         s["model"] = b.model

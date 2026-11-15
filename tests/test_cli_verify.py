@@ -87,5 +87,5 @@ def test_cli_opens_project_for_current_folder(tmp_path, monkeypatch):
     n = len(store.list_projects())
     monkeypatch.chdir(tmp_path / "other")  # unknown folder -> new project named after it
     new = cli.project_for_cwd()
-    assert new["name"] == "other" and new["root"] == str((tmp_path / "other").resolve()) and len(store.list_projects()) == n + 1
+    assert new["name"] == "Other" and new["root"] == str((tmp_path / "other").resolve()) and len(store.list_projects()) == n + 1
     assert cli.project_for_cwd()["id"] == new["id"]  # and it is reused next time

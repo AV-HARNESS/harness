@@ -114,8 +114,8 @@ def test_running_session_is_visible_and_edits_are_not_lost(client, echo, session
     echo.gate.set()
     t.join()
     final = client.get(f"/api/sessions/{sid}").json()
-    assert final["running"] is False and final["title"] == "renamed while running"
-    assert store.load(sid)["title"] == "renamed while running"  # persisted, and the run's own saves did not undo it
+    assert final["running"] is False and final["title"] == "Renamed While Running"
+    assert store.load(sid)["title"] == "Renamed While Running"  # persisted, and the run's own saves did not undo it
     assert "MARK-live" in json.dumps(final["messages"])
 
 
