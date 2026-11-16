@@ -156,6 +156,43 @@ def _chars(msgs: list) -> int:
     return len(json.dumps(msgs, ensure_ascii=False))
 
 
+STUB_MIN = 300  # results shorter than this are not worth stubbing
+
+
+def stub_old_results(messages: list, after: int | None = None) -> int:
+    """Shrink tool results older than the last `after` messages to a one-line stub (in place).
+
+    Every result stays in the history and is re-sent on each later call, so a long task drags its early file
+    reads along forever. The stub keeps the tool name, its arguments and the first line, so the model still
+    knows what was done and can re-run the tool if it needs the full text. Returns how many were shrunk.
+    """
+    after = config.STUB_AFTER if after is None else after
+    if after <= 0:
+        return 0
+    n = 0
+    for i in range(1, max(len(messages) - after, 0)):
+        m = messages[i]
+        if m["role"] != "user" or messages[i - 1]["role"] != "model":
+            continue
+        calls = [p["functionCall"] for p in messages[i - 1]["parts"] if "functionCall" in p]
+        k = 0
+        for p in m["parts"]:
+            fr = p.get("functionResponse")
+            if not fr:
+                continue
+            call = calls[k] if k < len(calls) else {}
+            k += 1
+            out = fr["response"].get("output")
+            if not isinstance(out, str) or len(out) < STUB_MIN or out.startswith("[old result"):
+                continue
+            args = ", ".join(f"{a}={str(v)[:40]!r}" for a, v in (call.get("args") or {}).items())[:160]
+            first = out.strip().splitlines()[0][:100] if out.strip() else ""
+            fr["response"]["output"] = (f"[old result dropped, {len(out)} chars: {fr.get('name', '')}({args}); "
+                                        f"starts: {first!r}. Re-run the tool if you need it again.]")
+            n += 1
+    return n
+
+
 def _step_cut(messages: list) -> int | None:
     """Index of a model message to start the verbatim tail at (so a tool call is never separated from its
     result), leaving about KEEP_STEPS messages. None if there is nothing earlier to summarize."""
@@ -234,6 +271,7 @@ def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None
         # context that stays big (large files in recent steps) would be re-summarized on every single step.
         if pt > config.COMPACT_AT and pt > s.get("compact_base", 0) * 1.25:
             compact(s, emit)
+        stub_old_results(s["messages"])
         system = build_system(project, s)  # rebuilt each step so block edits apply immediately
         if s["messages"][-1]["role"] != "user":  # Gemini rejects requests ending with a model turn
             s["messages"].append({"role": "user", "parts": [{"text": "Continue."}]})

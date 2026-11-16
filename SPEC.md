@@ -20,6 +20,7 @@ Change behaviour => change this file and the test in the same commit.
 - **R-LOOP-15** After a session's first reply, a short (3-6 word) title is written by the model at low effort in the background (HARNESS_AUTO_TITLE=0 disables); a title the user typed is never replaced.
 - **R-LOOP-16** While a model call streams, the loop emits `text_delta` events as text arrives and the usual final `text` event once the message is complete; history stores only the assembled message.
 - **R-LOOP-17** The system prompt asks for few steps with batched independent calls; when one step contains several read-only tool calls they run concurrently and results keep the model's order.
+- **R-LOOP-18** Tool results older than the last `HARNESS_STUB_AFTER` messages are replaced in history by a one-line stub (tool, args, first line, size); recent results and tool calls stay intact.
 - **R-LOOP-06** Model "thought" parts are never shown to the user, and are kept verbatim in history (thought signatures survive).
 - **R-LOOP-07** When the prompt exceeds `HARNESS_COMPACT_AT`, older turns are replaced by a summary and the last `HARNESS_KEEP_TURNS` user turns are kept verbatim.
 - **R-LOOP-08** A new session is titled from the first user message; the session is saved after every step.

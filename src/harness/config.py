@@ -108,6 +108,7 @@ WORKDIR = Path(os.environ.get("HARNESS_WORKDIR", os.getcwd())).resolve()  # defa
 MAX_STEPS = int(os.environ.get("HARNESS_MAX_STEPS", "200"))
 COMPACT_AT = int(os.environ.get("HARNESS_COMPACT_AT", "80000"))        # compact when prompt exceeds this
 KEEP_TURNS = int(os.environ.get("HARNESS_KEEP_TURNS", "6"))            # full turns to keep after compaction
+STUB_AFTER = int(os.environ.get("HARNESS_STUB_AFTER", "10"))  # tool results older than this many messages shrink to a stub (0 = off)
 HISTORY_TOOL_TRIM = int(os.environ.get("HARNESS_HISTORY_TOOL_TRIM", "2000"))  # max chars stored per tool result in history
 
 # --- privacy: mask secrets before anything is sent to a model (see redact.py) ---

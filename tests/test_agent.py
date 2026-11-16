@@ -316,3 +316,20 @@ def test_several_read_only_calls_run_in_one_step_in_order(session, fake, project
     assert len([r for r in fake.requests]) == 2  # one model call for the three tools, one for the answer
     sys_prompt = fake.requests[0]["body"]["systemInstruction"]["parts"][0]["text"]
     assert "as few steps as possible" in sys_prompt
+
+
+@covers("R-LOOP-18")
+def test_old_tool_results_shrink_to_stubs_recent_stay():
+    def step(i, big):
+        return [{"role": "model", "parts": [{"functionCall": {"name": "read_file", "args": {"path": f"f{i}.py"}}}]},
+                {"role": "user", "parts": [{"functionResponse": {"name": "read_file", "response": {"output": big}}}]}]
+    msgs = [{"role": "user", "parts": [{"text": "go"}]}]
+    for i in range(8):
+        msgs += step(i, f"line one of {i}\n" + "x" * 1000)
+    n = agent.stub_old_results(msgs, after=6)
+    outs = [m["parts"][0]["functionResponse"]["response"]["output"] for m in msgs if m["role"] == "user" and "functionResponse" in m["parts"][0]]
+    assert n == 5 and all(o.startswith("[old result dropped") for o in outs[:5])
+    assert "f0.py" in outs[0] and "line one of 0" in outs[0] and len(outs[0]) < 300
+    assert all(len(o) > 1000 for o in outs[5:])  # recent results untouched
+    assert agent.stub_old_results(msgs, after=6) == 0  # idempotent
+    assert agent.stub_old_results(msgs, after=0) == 0  # off switch
