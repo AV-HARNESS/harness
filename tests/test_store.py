@@ -195,3 +195,14 @@ def test_existing_lowercase_names_display_in_title_case():
     assert [x["name"] for x in store.list_projects() if x["id"] == p["id"]] == ["Old Lowercase Project"]
     s = store.create(p["id"], title="x"); s["title"] = "old chat about billing"; store.save(s)
     assert store.list_all(p["id"])[0]["title"] == "Old Chat About Billing"
+
+
+@covers("R-STORE-11")
+def test_project_without_a_folder_gets_its_own_workspace_and_can_link_one_later(tmp_path):
+    p = store.create_project("research notes")
+    ws = config.HOME / "workspaces" / p["id"]
+    assert p["root"] == str(ws.resolve()) and ws.is_dir() and p["default_root"] is True
+    code = tmp_path / "code"; code.mkdir()
+    q = store.update_project(p["id"], root=str(code))
+    assert q["root"] == str(code.resolve()) and "default_root" not in q
+    assert "default_root" not in store.create_project("with folder", str(tmp_path))
