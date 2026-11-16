@@ -184,3 +184,14 @@ def test_project_and_session_names_are_title_case():
     assert p["name"] == "My New Project"
     assert store.update_project(p["id"], name="renamed project plan")["name"] == "Renamed Project Plan"
     assert store.create(p["id"], title="first look at billing")["title"] == "First Look at Billing"
+
+
+@covers("R-STORE-10")
+def test_existing_lowercase_names_display_in_title_case():
+    p = store.create_project("Placeholder", "/tmp")
+    f = config.PROJECTS_DIR / p["id"] / "project.json"
+    d = json.loads(f.read_text(encoding="utf-8")); d["name"] = "old lowercase project"; f.write_text(json.dumps(d), encoding="utf-8")
+    assert store.get_project(p["id"])["name"] == "Old Lowercase Project"
+    assert [x["name"] for x in store.list_projects() if x["id"] == p["id"]] == ["Old Lowercase Project"]
+    s = store.create(p["id"], title="x"); s["title"] = "old chat about billing"; store.save(s)
+    assert store.list_all(p["id"])[0]["title"] == "Old Chat About Billing"
