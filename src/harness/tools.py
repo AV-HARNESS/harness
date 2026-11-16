@@ -65,6 +65,53 @@ def read_file(path: str, offset: int = 1, limit: int = 2000) -> str:
     return _clip("\n".join(f"{i}\t{l}" for i, l in enumerate(chunk, max(offset, 1))))
 
 
+def read_files(paths: list, limit: int = 400) -> str:
+    """Several files in one call (saves a model round trip per file)."""
+    out = []
+    for path in (paths or [])[:20]:
+        try:
+            out.append(f"===== {path} =====\n{read_file(str(path), 1, limit)}")
+        except Exception as e:
+            out.append(f"===== {path} =====\nERROR: {type(e).__name__}: {e}")
+    return _clip("\n\n".join(out) or "(no paths given)", MAX_OUT * 2)
+
+
+_SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", ".idea", ".next", "target"}
+
+
+def search(pattern: str, path: str = ".", glob: str = "", context: int = 0, max_results: int = 100) -> str:
+    """Regex search through text files (no grep needed, works on Windows): file:line: text."""
+    import fnmatch
+    import re
+    rx = re.compile(pattern, re.IGNORECASE)
+    base, hits = _p(path), 0
+    files = [base] if base.is_file() else (f for f in base.rglob("*") if f.is_file())
+    out = []
+    for f in files:
+        if any(part in _SKIP_DIRS for part in f.parts) or (glob and not fnmatch.fnmatch(f.name, glob)):
+            continue
+        if _guard(f):
+            continue
+        try:
+            if f.stat().st_size > 2_000_000:
+                continue
+            lines = f.read_text(encoding="utf-8").splitlines()
+        except (UnicodeDecodeError, OSError):
+            continue  # binary or unreadable
+        for i, line in enumerate(lines):
+            if rx.search(line):
+                rel = f.relative_to(_root()) if f.is_relative_to(_root()) else f
+                lo, hi = max(0, i - context), min(len(lines), i + context + 1)
+                out.append("\n".join(f"{rel}:{j + 1}: {lines[j]}" for j in range(lo, hi)))
+                hits += 1
+                if hits >= max_results:
+                    return _clip("\n".join(out) + f"\n... stopped at {max_results} matches")
+    return _clip("\n".join(out) or "(no matches)")
+
+
+READONLY = frozenset({"read_file", "read_files", "list_dir", "search", "list_blocks", "read_block", "web_fetch", "web_search"})
+
+
 def write_file(path: str, content: str) -> str:
     p = _p(path)
     if err := _guard(p, content):
@@ -169,6 +216,10 @@ REGISTRY = {
              _obj({"command": S, "timeout": I}, ["command"])),
     "read_file": (read_file, "Read a text file with line numbers.",
                   _obj({"path": S, "offset": I, "limit": I}, ["path"])),
+    "read_files": (read_files, "Read several text files in ONE call (preferred over many read_file calls).",
+                   _obj({"paths": {"type": "ARRAY", "items": S}, "limit": I}, ["paths"])),
+    "search": (search, "Regex search across files (case-insensitive); returns file:line: text. Use this instead of "
+               "reading files to find something.", _obj({"pattern": S, "path": S, "glob": S, "context": I, "max_results": I}, ["pattern"])),
     "write_file": (write_file, "Create or overwrite a file.", _obj({"path": S, "content": S}, ["path", "content"])),
     "edit_file": (edit_file, "Replace an exact string in a file.",
                   _obj({"path": S, "old": S, "new": S, "replace_all": B}, ["path", "old", "new"])),

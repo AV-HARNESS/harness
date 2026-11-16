@@ -300,3 +300,19 @@ def test_text_arrives_as_deltas_then_the_final_text_event(session, fake, monkeyp
     kinds = [(e["type"], e.get("text")) for e in events if e["type"] in ("text_delta", "text")]
     assert kinds == [("text_delta", "Hello "), ("text_delta", "world"), ("text", "Hello world")]
     assert session["messages"][-1]["parts"] == [{"text": "Hello world"}]
+
+
+@covers("R-LOOP-17")
+def test_several_read_only_calls_run_in_one_step_in_order(session, fake, project):
+    import pathlib
+    (pathlib.Path(project["root"]) / "x.txt").write_text("X-CONTENT", encoding="utf-8")
+    fake.push((200, gem(call("read_file", path="x.txt"), call("list_dir"), call("search", pattern="X-CONTENT"))),
+              (200, gem(text("done"))))
+    events = []
+    agent.run_turn(session, "look", events.append)
+    names = [e["name"] for e in events if e["type"] == "tool_call"]
+    results = [e["output"] for e in events if e["type"] == "tool_result"]
+    assert names == ["read_file", "list_dir", "search"] and "X-CONTENT" in results[0] and "x.txt" in results[1]
+    assert len([r for r in fake.requests]) == 2  # one model call for the three tools, one for the answer
+    sys_prompt = fake.requests[0]["body"]["systemInstruction"]["parts"][0]["text"]
+    assert "as few steps as possible" in sys_prompt

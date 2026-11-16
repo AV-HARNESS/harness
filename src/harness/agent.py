@@ -9,7 +9,10 @@ from . import config, llm, store, tools
 BASE_SYSTEM = (
     "You are a capable autonomous assistant with shell, file and web tools. "
     "Act directly: use tools to get things done, check your results, "
-    "and keep going until the task is finished. Be concise in your final answer.\n\n"
+    "and keep going until the task is finished. Be concise in your final answer.\n"
+    "Work in as few steps as possible: every step costs seconds. When several tool calls are independent "
+    "(reading files, searching, listing, fetching), issue them together in ONE step instead of one per step; "
+    "prefer read_files over many read_file calls and search over opening files to look for text.\n\n"
     "Project: {name}\nProject root (working directory; relative paths resolve here): {root}\n"
     "Context blocks are persistent notes for this project and are shown below. When goals, decisions, "
     "architecture or open tasks change, update them with write_block so the next session starts informed."
@@ -122,6 +125,20 @@ def auto_title(s: dict) -> str | None:
     title = next((p["text"] for p in content["parts"] if p.get("text") and not p.get("thought")), "").strip()
     title = title.splitlines()[0].strip().strip("\"'`*#. ")[:60] if title else ""
     return title or None
+
+
+def _run_parallel(calls: list[dict], emit) -> list[str]:
+    """Several read-only calls in one step run at the same time; results keep the model's order."""
+    import contextvars
+    from concurrent.futures import ThreadPoolExecutor
+    for c in calls:
+        emit({"type": "tool_call", "name": c["name"], "args": c.get("args", {})})
+    with ThreadPoolExecutor(min(len(calls), 6)) as ex:
+        futs = [ex.submit(contextvars.copy_context().run, tools.run, c["name"], c.get("args", {})) for c in calls]
+        outs = [f.result() for f in futs]
+    for c, out in zip(calls, outs):
+        emit({"type": "tool_result", "name": c["name"], "output": out})
+    return outs
 
 
 Emit = Callable[[dict], None]
@@ -248,10 +265,14 @@ def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None
             store.save(s)
             continue
         results = []
-        for c in calls:
-            emit({"type": "tool_call", "name": c["name"], "args": c.get("args", {})})
-            out = tools.run(c["name"], c.get("args", {}))
-            emit({"type": "tool_result", "name": c["name"], "output": out})
+        outs = _run_parallel(calls, emit) if len(calls) > 1 and all(c["name"] in tools.READONLY for c in calls) else None
+        for k, c in enumerate(calls):
+            if outs is None:
+                emit({"type": "tool_call", "name": c["name"], "args": c.get("args", {})})
+                out = tools.run(c["name"], c.get("args", {}))
+                emit({"type": "tool_result", "name": c["name"], "output": out})
+            else:
+                out = outs[k]
             # Store a history-trimmed version to prevent old tool outputs bloating context.
             # Full output was already emitted to the UI above.
             stored = out if len(out) <= config.HISTORY_TOOL_TRIM else out[:config.HISTORY_TOOL_TRIM] + f"\n... [trimmed in history; {len(out)} chars total]"
