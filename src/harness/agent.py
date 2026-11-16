@@ -204,7 +204,7 @@ def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None
         return  # an empty user turn is dropped by Gemini and leaves the request ending with a model turn
     s["messages"].append({"role": "user", "parts": [{"text": text}]})
     if s["title"] == "New session":
-        s["title"] = text.strip().splitlines()[0][:50] or "New session"
+        s["title"] = store.title_case(text.strip().splitlines()[0][:50]) or "New session"
         s["title_auto"] = True  # a stand-in until auto_title() writes a proper one
     store.save(s)
 

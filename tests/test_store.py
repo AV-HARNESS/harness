@@ -171,3 +171,16 @@ def test_permanently_corrupt_file_still_raises(project):
     (config.PROJECTS_DIR / project["id"] / "sessions" / f"{s['id']}.json").write_text("")
     with pytest.raises(json.JSONDecodeError):
         store.load(s["id"])
+
+
+@covers("R-STORE-10")
+def test_project_and_session_names_are_title_case():
+    from harness.store import title_case
+    assert title_case("project roadmap") == "Project Roadmap"
+    assert title_case("  q4   plan of the  API  ") == "Q4 Plan of the API"
+    assert title_case("WW MERIDIAN iPhone notes") == "WW MERIDIAN iPhone Notes"
+    assert title_case("the end of the") == "The End of The"
+    p = store.create_project("my new project", "/tmp")
+    assert p["name"] == "My New Project"
+    assert store.update_project(p["id"], name="renamed project plan")["name"] == "Renamed Project Plan"
+    assert store.create(p["id"], title="first look at billing")["title"] == "First Look at Billing"
