@@ -186,7 +186,7 @@ def test_no_login_warning_when_some_model_is_usable(app):
 
 
 @covers("R-UI-08")
-def test_session_row_has_rename_move_delete_and_move_works(app):
+def test_session_dots_menu_has_rename_move_delete_and_move_works(app):
     base, model, projects, api = app
     (p0, s0), (p1, s1) = projects
     with playwright.sync_playwright() as pw:
@@ -195,9 +195,8 @@ def test_session_row_has_rename_move_delete_and_move_works(app):
         page.goto(f"{base}/#p={p0['id']}&s={s0['id']}")
         page.wait_for_selector("#list .s")
         row = page.locator("#list .s").first
-        row.hover()
-        assert row.locator(".acts button").count() == 3
-        row.locator(".mv").click()
+        row.locator(".sdots").click()  # always visible, no hover needed
+        assert page.locator(".mvmenu [data-a=ren]").count() == 1 and page.locator(".mvmenu [data-a=del]").count() == 1
         page.click(f".mvmenu [data-p='{p1['id']}']")
         page.wait_for_selector("#list .s", state="detached")  # it left this project
         page.click(f"#plist .pr[data-id='{p1['id']}']")
