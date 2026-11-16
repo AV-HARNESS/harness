@@ -12,7 +12,9 @@ BASE_SYSTEM = (
     "and keep going until the task is finished. Be concise in your final answer.\n"
     "Work in as few steps as possible: every step costs seconds. When several tool calls are independent "
     "(reading files, searching, listing, fetching), issue them together in ONE step instead of one per step; "
-    "prefer read_files over many read_file calls and search over opening files to look for text.\n\n"
+    "prefer read_files over many read_file calls and search over opening files to look for text. "
+    "For broad exploration (finding where something lives, surveying many files) use delegate: a sub-agent reads "
+    "it all in its own context and returns just the answer.\n\n"
     "Project: {name}\nProject root (working directory; relative paths resolve here): {root}\n"
     "Context blocks are persistent notes for this project and are shown below. When goals, decisions, "
     "architecture or open tasks change, update them with write_block so the next session starts informed."
@@ -126,6 +128,42 @@ def auto_title(s: dict) -> str | None:
     title = next((p["text"] for p in content["parts"] if p.get("text") and not p.get("thought")), "").strip()
     title = title.splitlines()[0].strip().strip("\"'`*#. ")[:60] if title else ""
     return title or None
+
+
+SUB_SYSTEM = ("You are a research sub-agent working for another agent. Investigate the task with your read-only tools "
+              "(issue independent calls together in one step), then reply with a dense, factual answer: findings, file "
+              "paths and line numbers, and anything uncertain. Your reply is all the caller sees; do not paste large "
+              "file contents.\nProject root (working directory): {root}")
+SUB_MAX_STEPS, SUB_MAX_REPLY = 15, 6000
+
+
+def run_subagent(task: str, model: str) -> str:
+    """A fresh, read-only agent loop. Returns only its final answer, so the caller's history stays small."""
+    project = tools.PROJECT.get()
+    allowed = tools.READONLY - {"delegate"}  # no recursion, no writes
+    decls = [{"functionDeclarations": [d for d in tools.DECLARATIONS[0]["functionDeclarations"] if d["name"] in allowed]}]
+    msgs = [{"role": "user", "parts": [{"text": task}]}]
+    system = SUB_SYSTEM.format(root=project["root"] if project else ".")
+    for _ in range(SUB_MAX_STEPS):
+        content, _, _ = llm.generate(model, msgs, system, decls)
+        msgs.append(content)
+        calls = [p["functionCall"] for p in content["parts"] if "functionCall" in p]
+        if not calls:
+            ans = "".join(p.get("text", "") for p in content["parts"] if not p.get("thought")).strip()
+            return ans[:SUB_MAX_REPLY] or "(sub-agent returned nothing)"
+        outs = _run_parallel([c for c in calls if c["name"] in allowed], lambda e: None) if len(calls) > 1 else None
+        res = []
+        for k, c in enumerate(calls):
+            if c["name"] not in allowed:
+                out = f"ERROR: {c['name']} is not available to a sub-agent"
+            elif outs is not None:
+                out = outs[[x for x in calls if x["name"] in allowed].index(c)]
+            else:
+                out = tools.run(c["name"], c.get("args", {}))
+            out = out[:config.HISTORY_TOOL_TRIM]
+            res.append({"functionResponse": {"name": c["name"], "response": {"output": out}}})
+        msgs.append({"role": "user", "parts": res})
+    return "(sub-agent ran out of steps) " + "".join(p.get("text", "") for p in msgs[-2]["parts"] if p.get("text"))[:SUB_MAX_REPLY]
 
 
 def _run_parallel(calls: list[dict], emit) -> list[str]:
@@ -268,6 +306,7 @@ def _drain(inbox) -> list[str]:
 def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None, inbox=None) -> None:
     project = store.get_project(s["project"])
     tools.PROJECT.set(project)
+    tools.MODEL.set(s["model"])
     if not str(text).strip():
         return  # an empty user turn is dropped by Gemini and leaves the request ending with a model turn
     s["messages"].append({"role": "user", "parts": [{"text": text}]})

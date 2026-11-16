@@ -357,3 +357,21 @@ def test_old_results_are_stubbed_in_batches_not_every_step():
         add()
         runs.append(agent.stub_in_batches(s))
     assert sum(1 for r in runs if r) <= 3 and sum(runs) > 0   # a few batches, not one rewrite per step
+
+
+@covers("R-LOOP-20")
+def test_delegate_runs_a_separate_read_only_context_and_returns_only_its_answer(session, fake, project):
+    import pathlib
+    (pathlib.Path(project["root"]) / "big.txt").write_text("SECRET-FILE-BODY " * 50, encoding="utf-8")
+    fake.push((200, gem(call("delegate", task="find big.txt content"))),     # main model delegates
+              (200, gem(call("read_file", path="big.txt"))),                 # sub-agent reads
+              (200, gem(call("write_file", path="x", content="no"), call("list_dir"))),  # sub-agent tries a write
+              (200, gem(text("FINDING: big.txt repeats a marker"))),         # sub-agent answer
+              (200, gem(text("all done"))))                                  # main model finishes
+    events = []
+    agent.run_turn(session, "survey", events.append)
+    main_hist = str(session["messages"])
+    assert "FINDING: big.txt repeats a marker" in main_hist and "SECRET-FILE-BODY" not in main_hist
+    assert not (pathlib.Path(project["root"]) / "x").exists()               # sub-agents cannot write
+    sub_tools = fake.requests[1]["body"]["tools"][0]["functionDeclarations"]
+    assert "delegate" not in [d["name"] for d in sub_tools] and "write_file" not in [d["name"] for d in sub_tools]

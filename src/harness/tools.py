@@ -109,7 +109,15 @@ def search(pattern: str, path: str = ".", glob: str = "", context: int = 0, max_
     return _clip("\n".join(out) or "(no matches)")
 
 
-READONLY = frozenset({"read_file", "read_files", "list_dir", "search", "list_blocks", "read_block", "web_fetch", "web_search"})
+MODEL: ContextVar[str] = ContextVar("model", default="")
+
+
+def delegate(task: str) -> str:
+    from . import agent  # late import: agent imports this module
+    return agent.run_subagent(task, MODEL.get())
+
+
+READONLY = frozenset({"delegate", "read_file", "read_files", "list_dir", "search", "list_blocks", "read_block", "web_fetch", "web_search"})
 
 
 def write_file(path: str, content: str) -> str:
@@ -229,6 +237,11 @@ REGISTRY = {
     "write_block": (write_block, "Create/overwrite (or append to) a context block. Use for durable project facts: "
                     "goals, decisions, architecture, open tasks. Keep blocks short and current; not for chat logs.",
                     _obj({"name": S, "content": S, "append": B}, ["name", "content"])),
+    "delegate": (delegate, "Hand a self-contained research task to a sub-agent with its own fresh context and read-only "
+                 "tools (files, search, web). Only its final answer comes back, so big file reads never fill your "
+                 "context. Use it for broad exploration ('where is X handled?', 'summarize this folder', 'compare these "
+                 "docs'). Give it all the detail it needs; it cannot see this conversation. Several delegate calls in "
+                 "one step run in parallel.", _obj({"task": S}, ["task"])),
     "web_fetch": (web_fetch, "Fetch a URL and return readable text.", _obj({"url": S, "max_chars": I}, ["url"])),
     "web_search": (web_search, "Search the web (Google grounding) and return an answer with sources.",
                    _obj({"query": S}, ["query"])),
