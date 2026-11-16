@@ -99,14 +99,18 @@ def create_project(name: str, root: str | None = None, model: str | None = None)
 
 
 def get_project(pid: str) -> dict:
-    return _read_json(_pdir(pid) / "project.json")
+    p = _read_json(_pdir(pid) / "project.json")
+    p["name"] = title_case(p.get("name", ""))  # names saved before Title Case was enforced display correctly too
+    return p
 
 
 def list_projects() -> list[dict]:
     out = []
     for f in config.PROJECTS_DIR.glob("*/project.json"):
         try:
-            out.append(json.loads(f.read_text(encoding="utf-8")))
+            p = json.loads(f.read_text(encoding="utf-8"))
+            p["name"] = title_case(p.get("name", ""))
+            out.append(p)
         except Exception:
             pass
     return sorted(out, key=lambda p: p.get("created", 0))
@@ -222,5 +226,7 @@ def list_all(project: str) -> list[dict]:
             s = json.loads(p.read_text(encoding="utf-8"))
         except Exception:
             continue
-        out.append({k: s.get(k) for k in ("id", "project", "title", "model", "created", "updated", "prompt_tokens")})
+        row = {k: s.get(k) for k in ("id", "project", "title", "model", "created", "updated", "prompt_tokens")}
+        row["title"] = title_case(row["title"] or "") if row["title"] != "New session" else row["title"]
+        out.append(row)
     return sorted(out, key=lambda x: x["updated"] or 0, reverse=True)
