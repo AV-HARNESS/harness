@@ -2,7 +2,7 @@
 import json
 import os
 
-from .. import errors
+from .. import config, errors
 
 from . import _post, _stream_events, _with_stream_fallback, _declarations, _lower_types, _text, _result_text
 
@@ -48,12 +48,17 @@ def generate(spec: dict, contents: list, system: str, tools, retries: int, on_te
     headers = {"x-api-key": _key(spec), "anthropic-version": "2023-06-01", **spec.get("headers", {})}
     body = {"model": spec["model"], "max_tokens": spec.get("max_tokens", 8192),
             "messages": _to_anthropic(contents), **spec.get("extra", {})}
+    cache = {"cache_control": {"type": "ephemeral"}} if config.CACHE else {}
     if system:
-        body["system"] = system
+        body["system"] = [{"type": "text", "text": system, **cache}] if cache else system
     decls = _declarations(tools)
     if decls:
         body["tools"] = [{"name": d["name"], "description": d["description"],
                           "input_schema": _lower_types(d["parameters"])} for d in decls]
+        if cache:
+            body["tools"][-1].update(cache)  # caches tools + system together
+    if cache and body["messages"] and isinstance(body["messages"][-1]["content"], list) and body["messages"][-1]["content"]:
+        body["messages"][-1]["content"][-1].update(cache)  # and the whole history up to the newest message
     def streamed(cb):
         blocks, usage = {}, {}
         for ev in _stream_events(f"{base}/v1/messages", headers, {**body, "stream": True}, retries):
@@ -96,4 +101,4 @@ def generate(spec: dict, contents: list, system: str, tools, retries: int, on_te
         parts = [{"text": "(empty response)"}]
     u = data.get("usage") or {}
     prompt = u.get("input_tokens", 0) + u.get("cache_read_input_tokens", 0) + u.get("cache_creation_input_tokens", 0)
-    return {"role": "model", "parts": parts}, {"promptTokenCount": prompt}, {}
+    return {"role": "model", "parts": parts}, {"promptTokenCount": prompt, "cachedContentTokenCount": u.get("cache_read_input_tokens", 0)}, {}
