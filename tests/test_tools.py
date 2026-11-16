@@ -97,7 +97,7 @@ def test_long_output_is_clipped_in_the_middle(inproject):
 
 def test_every_registered_tool_is_declared():
     names = {d["name"] for d in tools.DECLARATIONS[0]["functionDeclarations"]}
-    assert names == set(tools.REGISTRY) and len(names) == 12
+    assert names == set(tools.REGISTRY) and len(names) == 13
 
 
 @covers("R-TOOL-09")

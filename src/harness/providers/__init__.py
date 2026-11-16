@@ -163,8 +163,8 @@ def generate(alias: str, contents: list, system: str = "", tools: list | None = 
     secs = round(time.monotonic() - t0, 1)
     usage = {**usage, "secs": secs}  # wall time of this model call, retries included
     from .. import errors
-    errors.logger().info("model call %s: %.1fs prompt=%s thoughts=%s output=%s effort=%s",
-                         alias, secs, usage.get("promptTokenCount", usage.get("prompt_tokens", "?")),
+    errors.logger().info("model call %s: %.1fs prompt=%s cached=%s thoughts=%s output=%s effort=%s",
+                         alias, secs, usage.get("promptTokenCount", usage.get("prompt_tokens", "?")), usage.get("cachedContentTokenCount", 0),
                          usage.get("thoughtsTokenCount", 0), usage.get("candidatesTokenCount", "?"), effort or "default")
     return content, usage, cand
 

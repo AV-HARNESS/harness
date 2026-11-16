@@ -89,4 +89,5 @@ def generate(spec: dict, contents: list, system: str, tools, retries: int, on_te
     if not parts:
         parts = [{"text": "(empty response)"}]
     return ({"role": "model", "parts": parts},
-            {"promptTokenCount": (data.get("usage") or {}).get("prompt_tokens", 0)}, {})
+            {"promptTokenCount": (data.get("usage") or {}).get("prompt_tokens", 0),
+             "cachedContentTokenCount": ((data.get("usage") or {}).get("prompt_tokens_details") or {}).get("cached_tokens", 0)}, {})

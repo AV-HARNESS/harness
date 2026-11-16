@@ -183,13 +183,21 @@ def test_anthropic_translation_and_role_merge(fake, monkeypatch):
     assert r["path"] == "/v1/messages" and r["headers"]["x-api-key"] == "ant-not-a-real-key-0000"
     assert r["headers"]["anthropic-version"]
     b = r["body"]
-    assert b["max_tokens"] == 99 and b["system"] == "SYS"
+    assert b["max_tokens"] == 99 and b["system"][0]["text"] == "SYS"
     assert [m["role"] for m in b["messages"]] == ["user", "assistant", "user"]  # consecutive user turns merged
     assert [x["type"] for x in b["messages"][2]["content"]] == ["tool_result", "text"]
     assert b["messages"][2]["content"][0]["tool_use_id"] == b["messages"][1]["content"][1]["id"]
     assert b["tools"][0]["input_schema"]["type"] == "object"
     assert c["parts"] == [{"text": "hey"}, {"functionCall": {"name": "t", "args": {"a": "3"}}}]
-    assert usage["promptTokenCount"] == 10
+    assert usage["promptTokenCount"] == 10 and usage["cachedContentTokenCount"] == 3
+    # cache markers on system, the last tool and the newest message cover the whole stable prefix
+    assert b["system"][0]["cache_control"] == {"type": "ephemeral"} and b["tools"][-1]["cache_control"]
+    assert b["messages"][-1]["content"][-1]["cache_control"]
+    monkeypatch.setattr(config, "CACHE", False)
+    fake.push((200, {"content": [{"type": "text", "text": "x"}], "usage": {}}))
+    providers.generate("a", hist, "SYS", DECL)
+    b2 = fake.requests[1]["body"]
+    assert b2["system"] == "SYS" and "cache_control" not in b2["tools"][-1]
 
 
 @covers("R-PROV-05")

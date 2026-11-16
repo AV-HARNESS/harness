@@ -316,3 +316,62 @@ def test_several_read_only_calls_run_in_one_step_in_order(session, fake, project
     assert len([r for r in fake.requests]) == 2  # one model call for the three tools, one for the answer
     sys_prompt = fake.requests[0]["body"]["systemInstruction"]["parts"][0]["text"]
     assert "as few steps as possible" in sys_prompt
+
+
+@covers("R-LOOP-18")
+def test_old_tool_results_shrink_to_stubs_recent_stay():
+    def step(i, big):
+        return [{"role": "model", "parts": [{"functionCall": {"name": "read_file", "args": {"path": f"f{i}.py"}}}]},
+                {"role": "user", "parts": [{"functionResponse": {"name": "read_file", "response": {"output": big}}}]}]
+    msgs = [{"role": "user", "parts": [{"text": "go"}]}]
+    for i in range(8):
+        msgs += step(i, f"line one of {i}\n" + "x" * 1000)
+    n = agent.stub_old_results(msgs, after=6)
+    outs = [m["parts"][0]["functionResponse"]["response"]["output"] for m in msgs if m["role"] == "user" and "functionResponse" in m["parts"][0]]
+    assert n == 5 and all(o.startswith("[old result dropped") for o in outs[:5])
+    assert "f0.py" in outs[0] and "line one of 0" in outs[0] and len(outs[0]) < 300
+    assert all(len(o) > 1000 for o in outs[5:])  # recent results untouched
+    assert agent.stub_old_results(msgs, after=6) == 0  # idempotent
+    assert agent.stub_old_results(msgs, after=0) == 0  # off switch
+
+
+@covers("R-LOOP-19")
+def test_system_prompt_is_stable_within_a_turn_and_rebuilt_after_block_write(session, fake, project):
+    fake.push((200, gem(call("list_dir"))), (200, gem(call("write_block", name="notes", content="NEW-FACT"))),
+              (200, gem(call("list_dir"))), (200, gem(text("done"))))
+    agent.run_turn(session, "go", lambda e: None)
+    sys_of = [r["body"]["systemInstruction"]["parts"][0]["text"] for r in fake.requests]
+    assert sys_of[0] == sys_of[1]                      # byte-identical: provider cache stays valid
+    assert "NEW-FACT" not in sys_of[1] and "NEW-FACT" in sys_of[2] and sys_of[2] == sys_of[3]
+
+
+@covers("R-LOOP-19")
+def test_old_results_are_stubbed_in_batches_not_every_step():
+    s = {"messages": [{"role": "user", "parts": [{"text": "go"}]}]}
+    def add():
+        i = len(s["messages"])
+        s["messages"] += [{"role": "model", "parts": [{"functionCall": {"name": "read_file", "args": {"path": f"f{i}"}}}]},
+                          {"role": "user", "parts": [{"functionResponse": {"name": "read_file", "response": {"output": "y" * 500}}}]}]
+    runs = []
+    for _ in range(14):
+        add()
+        runs.append(agent.stub_in_batches(s))
+    assert sum(1 for r in runs if r) <= 3 and sum(runs) > 0   # a few batches, not one rewrite per step
+
+
+@covers("R-LOOP-20")
+def test_delegate_runs_a_separate_read_only_context_and_returns_only_its_answer(session, fake, project):
+    import pathlib
+    (pathlib.Path(project["root"]) / "big.txt").write_text("SECRET-FILE-BODY " * 50, encoding="utf-8")
+    fake.push((200, gem(call("delegate", task="find big.txt content"))),     # main model delegates
+              (200, gem(call("read_file", path="big.txt"))),                 # sub-agent reads
+              (200, gem(call("write_file", path="x", content="no"), call("list_dir"))),  # sub-agent tries a write
+              (200, gem(text("FINDING: big.txt repeats a marker"))),         # sub-agent answer
+              (200, gem(text("all done"))))                                  # main model finishes
+    events = []
+    agent.run_turn(session, "survey", events.append)
+    main_hist = str(session["messages"])
+    assert "FINDING: big.txt repeats a marker" in main_hist and "SECRET-FILE-BODY" not in main_hist
+    assert not (pathlib.Path(project["root"]) / "x").exists()               # sub-agents cannot write
+    sub_tools = fake.requests[1]["body"]["tools"][0]["functionDeclarations"]
+    assert "delegate" not in [d["name"] for d in sub_tools] and "write_file" not in [d["name"] for d in sub_tools]
