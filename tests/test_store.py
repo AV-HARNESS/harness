@@ -206,3 +206,16 @@ def test_project_without_a_folder_gets_its_own_workspace_and_can_link_one_later(
     q = store.update_project(p["id"], root=str(code))
     assert q["root"] == str(code.resolve()) and "default_root" not in q
     assert "default_root" not in store.create_project("with folder", str(tmp_path))
+
+
+@covers("R-STORE-12")
+def test_move_session_between_projects():
+    a, b = store.create_project("A", "."), store.create_project("B", ".")
+    s = store.create(a["id"], "Keep Me")
+    s["messages"] = [{"role": "user", "parts": [{"text": "hi"}]}]
+    store.save(s)
+    m = store.move(s["id"], b["id"])
+    assert m["project"] == b["id"] and store.load(s["id"])["messages"][0]["parts"][0]["text"] == "hi"
+    assert [x["id"] for x in store.list_all(b["id"])] == [s["id"]] and store.list_all(a["id"]) == []
+    with pytest.raises(KeyError):
+        store.move(s["id"], "nope")

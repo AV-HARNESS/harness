@@ -394,3 +394,18 @@ def test_user_renamed_session_keeps_its_name(client, session, fake, monkeypatch)
     assert store.load(sid).get("title_auto") is False
     server._retitle(sid)
     assert store.load(sid)["title"] == "My Name" and fake.requests == []
+
+
+@covers("R-UI-08")
+def test_patch_moves_session_to_another_project(client, session):
+    sid = session["id"]
+    other = client.post("/api/projects", json={"name": "Other"}).json()
+    r = client.patch(f"/api/sessions/{sid}", json={"project": other["id"]})
+    assert r.status_code == 200 and store.load(sid)["project"] == other["id"]
+    assert [x["id"] for x in client.get(f"/api/sessions?project={other['id']}").json()] == [sid]
+    assert client.patch(f"/api/sessions/{sid}", json={"project": "nope"}).status_code == 404
+    server._busy.add(sid)
+    try:
+        assert client.patch(f"/api/sessions/{sid}", json={"project": session["project"]}).status_code == 409
+    finally:
+        server._busy.discard(sid)

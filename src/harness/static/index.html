@@ -212,6 +212,13 @@
   .pr:hover:not(.on), .s:hover:not(.on) { background:var(--hover); }
   .b { color:var(--mute); } .b:hover { color:var(--ink); }
   #blocks { border-top:1px solid var(--line); margin-top:8px; padding-top:2px; }
+  .s .acts { position:absolute; right:4px; top:50%; transform:translateY(-50%); display:flex; gap:0; opacity:0; background:inherit; border-radius:8px; }
+  .s:hover .acts, .s.on:hover .acts { opacity:1; }
+  .s .acts button { position:static; opacity:1; width:22px; height:22px; padding:0; display:grid; place-items:center; border:none; background:transparent; color:var(--mute); border-radius:6px; }
+  .s .acts button:hover { color:var(--ink); background:var(--line); } .s .acts .x:hover { color:var(--accent); }
+  .s .acts .i { width:13px; height:13px; }
+  .s .t { padding-right:0; } .s:hover .t { padding-right:68px; }
+  .mvmenu { min-width:200px; max-height:50vh; overflow:auto; } .mvmenu button { display:flex; padding:7px 11px; width:100%; text-align:left; }
 </style>
 </head>
 <body>
@@ -396,6 +403,22 @@ function render(m, i) {
 }
 function setTok(n) { $('tok').textContent = n ? `${(n/1000).toFixed(1)}k ctx` : ''; }
 
+function moveMenu(btn, s) {  // pick the project to move a session into
+  document.querySelectorAll('.mvmenu').forEach(m => m.remove());
+  const m = document.createElement('div'); m.className = 'menu mvmenu';
+  const others = projects.filter(p => p.id !== s.project);
+  m.innerHTML = '<span class="mh">Move to project</span>' + (others.length ? others.map(p => `<button data-p="${esc(p.id)}"><b>${esc(p.name)}</b></button>`).join('') : '<span class="mh">No other projects</span>');
+  const r = btn.getBoundingClientRect(); m.style.cssText = `position:fixed;left:${r.left}px;top:${r.bottom + 4}px;z-index:50;display:block;bottom:auto`;
+  m.querySelectorAll('[data-p]').forEach(b => b.onclick = async ev => {
+    ev.stopPropagation(); m.remove();
+    try { await api('PATCH', '/api/sessions/' + s.id, {project: b.dataset.p}); } catch (err) { alert(err.message || err); return; }
+    if (cur && cur.id === s.id) { cur = null; $('msgs').innerHTML = ''; }
+    loadList();
+  });
+  document.body.appendChild(m);
+  setTimeout(() => document.addEventListener('click', () => m.remove(), {once: true}), 0);
+}
+
 async function loadList() {
   const ss = await api('GET', '/api/sessions?project=' + proj.id);
   $('list').innerHTML = '';
@@ -406,12 +429,14 @@ async function loadList() {
     if (g !== lastGroup) { lastGroup = g; const h = document.createElement('div'); h.className = 'grp'; h.textContent = g; $('list').appendChild(h); }
     const d = document.createElement('div'); d.className = 's' + (cur && cur.id === s.id ? ' on' : '');
     d.title = `${s.model || ''} · ${ago(s.updated)}`;
-    d.innerHTML = `<div class="t">${esc(s.title)}</div><button class="x" title="Delete">${SVG('x')}</button>`;
+    d.innerHTML = `<div class="t">${esc(s.title)}</div><span class="acts"><button class="ren" title="Rename">${SVG('pen')}</button><button class="mv" title="Move to project">${SVG('folder')}</button><button class="x" title="Delete">${SVG('x')}</button></span>`;
     d.onclick = () => open(s.id);
-    d.querySelector('.t').ondblclick = async e => {  // double-click a session title to rename it
+    const rename = async e => {
       e.stopPropagation(); const n = prompt('Rename session', s.title);
       if (n && n.trim() && n !== s.title) { await api('PATCH', '/api/sessions/' + s.id, {title: n.trim()}); if (cur && cur.id === s.id) $('title').value = n.trim(); loadList(); }
     };
+    d.querySelector('.t').ondblclick = rename; d.querySelector('.ren').onclick = rename;
+    d.querySelector('.mv').onclick = e => { e.stopPropagation(); moveMenu(e.currentTarget, s); };
     d.querySelector('.x').onclick = async e => {
       e.stopPropagation(); if (!confirm('Delete this session?')) return;
       await api('DELETE', '/api/sessions/' + s.id);

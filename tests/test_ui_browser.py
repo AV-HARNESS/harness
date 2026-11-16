@@ -183,3 +183,23 @@ def test_no_login_warning_when_some_model_is_usable(app):
         text = page.inner_text("#msgs")
         assert "Not logged in" not in text and "VERTEX_PROJECT" not in text and "No model is available" not in text
         browser.close()
+
+
+@covers("R-UI-08")
+def test_session_row_has_rename_move_delete_and_move_works(app):
+    base, model, projects, api = app
+    (p0, s0), (p1, s1) = projects
+    with playwright.sync_playwright() as pw:
+        browser = pw.chromium.launch(executable_path=CHROME, args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 1100, "height": 700})
+        page.goto(f"{base}/#p={p0['id']}&s={s0['id']}")
+        page.wait_for_selector("#list .s")
+        row = page.locator("#list .s").first
+        row.hover()
+        assert row.locator(".acts button").count() == 3
+        row.locator(".mv").click()
+        page.click(f".mvmenu [data-p='{p1['id']}']")
+        page.wait_for_selector("#list .s", state="detached")  # it left this project
+        page.click(f"#plist .pr[data-id='{p1['id']}']")
+        page.wait_for_function(f"document.querySelectorAll('#list .s').length >= 2")
+        browser.close()
