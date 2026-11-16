@@ -315,7 +315,7 @@ def test_several_read_only_calls_run_in_one_step_in_order(session, fake, project
     assert names == ["read_file", "list_dir", "search"] and "X-CONTENT" in results[0] and "x.txt" in results[1]
     assert len([r for r in fake.requests]) == 2  # one model call for the three tools, one for the answer
     sys_prompt = fake.requests[0]["body"]["systemInstruction"]["parts"][0]["text"]
-    assert "as few steps as possible" in sys_prompt
+    assert "as few steps as possible" in sys_prompt and "edit_file" in sys_prompt and "Output length" in sys_prompt
 
 
 @covers("R-LOOP-18")
