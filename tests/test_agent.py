@@ -333,3 +333,27 @@ def test_old_tool_results_shrink_to_stubs_recent_stay():
     assert all(len(o) > 1000 for o in outs[5:])  # recent results untouched
     assert agent.stub_old_results(msgs, after=6) == 0  # idempotent
     assert agent.stub_old_results(msgs, after=0) == 0  # off switch
+
+
+@covers("R-LOOP-19")
+def test_system_prompt_is_stable_within_a_turn_and_rebuilt_after_block_write(session, fake, project):
+    fake.push((200, gem(call("list_dir"))), (200, gem(call("write_block", name="notes", content="NEW-FACT"))),
+              (200, gem(call("list_dir"))), (200, gem(text("done"))))
+    agent.run_turn(session, "go", lambda e: None)
+    sys_of = [r["body"]["systemInstruction"]["parts"][0]["text"] for r in fake.requests]
+    assert sys_of[0] == sys_of[1]                      # byte-identical: provider cache stays valid
+    assert "NEW-FACT" not in sys_of[1] and "NEW-FACT" in sys_of[2] and sys_of[2] == sys_of[3]
+
+
+@covers("R-LOOP-19")
+def test_old_results_are_stubbed_in_batches_not_every_step():
+    s = {"messages": [{"role": "user", "parts": [{"text": "go"}]}]}
+    def add():
+        i = len(s["messages"])
+        s["messages"] += [{"role": "model", "parts": [{"functionCall": {"name": "read_file", "args": {"path": f"f{i}"}}}]},
+                          {"role": "user", "parts": [{"functionResponse": {"name": "read_file", "response": {"output": "y" * 500}}}]}]
+    runs = []
+    for _ in range(14):
+        add()
+        runs.append(agent.stub_in_batches(s))
+    assert sum(1 for r in runs if r) <= 3 and sum(runs) > 0   # a few batches, not one rewrite per step

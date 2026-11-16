@@ -17,6 +17,7 @@ BASE_SYSTEM = (
     "Context blocks are persistent notes for this project and are shown below. When goals, decisions, "
     "architecture or open tasks change, update them with write_block so the next session starts informed."
 )
+BLOCK_WRITERS = frozenset({"write_block", "delete_block"})
 MAX_BLOCK, MAX_BLOCKS_TOTAL = 8000, 40000
 GUIDE_FILES = ("AGENTS.md", "CLAUDE.md")
 GUIDE_HOWTO = (
@@ -156,10 +157,22 @@ def _chars(msgs: list) -> int:
     return len(json.dumps(msgs, ensure_ascii=False))
 
 
+def stub_in_batches(s: dict) -> int:
+    """Run stub_old_results only once STUB_BATCH more messages have aged out. Rewriting a message changes the
+    prompt from that point on and so invalidates the provider's prompt cache; doing it every step would defeat it."""
+    after = config.STUB_AFTER
+    boundary = len(s["messages"]) - after
+    done = s.get("stub_upto", 1)
+    if after <= 0 or boundary - done < config.STUB_BATCH:
+        return 0
+    s["stub_upto"] = boundary
+    return stub_old_results(s["messages"], after, start=done)
+
+
 STUB_MIN = 300  # results shorter than this are not worth stubbing
 
 
-def stub_old_results(messages: list, after: int | None = None) -> int:
+def stub_old_results(messages: list, after: int | None = None, start: int = 1) -> int:
     """Shrink tool results older than the last `after` messages to a one-line stub (in place).
 
     Every result stays in the history and is re-sent on each later call, so a long task drags its early file
@@ -170,7 +183,7 @@ def stub_old_results(messages: list, after: int | None = None) -> int:
     if after <= 0:
         return 0
     n = 0
-    for i in range(1, max(len(messages) - after, 0)):
+    for i in range(max(start, 1), max(len(messages) - after, 0)):
         m = messages[i]
         if m["role"] != "user" or messages[i - 1]["role"] != "model":
             continue
@@ -232,6 +245,7 @@ def compact(s: dict, emit: Emit = lambda e: None) -> bool:
         head.append({"role": "model", "parts": [{"text": "Understood. Continuing from that summary."}]})
     s["messages"] = head + keep
     s["prompt_tokens"] = 0
+    s["stub_upto"] = 1
     s["just_compacted"] = True  # the next usage report tells us how big the context is after compaction
     store.save(s)
     emit({"type": "compacted", "summary": summary})
@@ -262,6 +276,9 @@ def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None
         s["title_auto"] = True  # a stand-in until auto_title() writes a proper one
     store.save(s)
 
+    # The system prompt is built once per user turn and kept byte-identical across steps, so the provider can reuse
+    # its cache of the unchanged prefix (system + tools + earlier history). It is rebuilt when a block changes.
+    system = None
     for _ in range(config.MAX_STEPS):
         if stop and stop.is_set():
             emit({"type": "text", "text": "(stopped)"})
@@ -271,8 +288,9 @@ def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None
         # context that stays big (large files in recent steps) would be re-summarized on every single step.
         if pt > config.COMPACT_AT and pt > s.get("compact_base", 0) * 1.25:
             compact(s, emit)
-        stub_old_results(s["messages"])
-        system = build_system(project, s)  # rebuilt each step so block edits apply immediately
+        stub_in_batches(s)
+        if system is None:
+            system = build_system(project, s)
         if s["messages"][-1]["role"] != "user":  # Gemini rejects requests ending with a model turn
             s["messages"].append({"role": "user", "parts": [{"text": "Continue."}]})
         content, usage, _ = llm.generate(s["model"], s["messages"], system, tools.DECLARATIONS, effort=s.get("effort", ""),
@@ -315,6 +333,8 @@ def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None
             # Full output was already emitted to the UI above.
             stored = out if len(out) <= config.HISTORY_TOOL_TRIM else out[:config.HISTORY_TOOL_TRIM] + f"\n... [trimmed in history; {len(out)} chars total]"
             results.append({"functionResponse": {"name": c["name"], "response": {"output": stored}}})
+            if c["name"] in BLOCK_WRITERS:
+                system = None  # block edits apply on the next step
         queued = [] if (stop and stop.is_set()) else _drain(inbox)  # delivered with the tool results
         for t in queued:
             emit({"type": "user", "text": t})
