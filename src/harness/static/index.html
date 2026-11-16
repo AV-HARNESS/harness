@@ -619,8 +619,11 @@ try { setAutoHide(localStorage.getItem('autohide') === '1'); } catch (e) {}
 async function newProject() {
   $('projmenu').hidden = true;
   const name = prompt('Project name'); if (!name) return;
-  const root = await pickFolder('link', proj ? proj.root : ''); if (!root) return;
-  try { const p = await api('POST', '/api/projects', {name, root}); await loadProjects(p.id); } catch (e) { alert(e.message); }
+  try {
+    const p = await api('POST', '/api/projects', {name});  // no folder up front: it gets its own workspace, and a real one can be linked later
+    await loadProjects(p.id);
+    add('sys', `Project created with its own workspace folder. Working on existing code? Open the <b>…</b> next to the project and choose <b>Change project folder</b> to link it any time.`);
+  } catch (e) { alert(e.message); }
 }
 async function renameProject() {
   $('projmenu').hidden = true;

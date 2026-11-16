@@ -85,15 +85,25 @@ def title_case(text: str) -> str:
 
 
 def create_project(name: str, root: str | None = None, model: str | None = None) -> dict:
-    root = _check_root(root)
+    """Without a root the project gets its own working folder under <HARNESS_HOME>/workspaces/, so a folder never has
+    to be picked up front; it can be pointed at real code later (update_project)."""
     base = pid = _slug(name)
     n = 2
     while (config.PROJECTS_DIR / pid).exists():
         pid, n = f"{base}-{n}", n + 1
+    default_root = not root
+    if default_root:
+        ws = config.HOME / "workspaces" / pid
+        ws.mkdir(parents=True, exist_ok=True)
+        root = str(ws.resolve())
+    else:
+        root = _check_root(root)
     d = config.PROJECTS_DIR / pid
     (d / "blocks").mkdir(parents=True)
     (d / "sessions").mkdir()
     p = {"id": pid, "name": title_case(name), "root": root, "model": model or config.DEFAULT_MODEL, "created": time.time()}
+    if default_root:
+        p["default_root"] = True  # the UI can offer to pick a real folder later
     _write(d / "project.json", json.dumps(p, indent=2))
     return p
 
@@ -122,6 +132,7 @@ def update_project(pid: str, name=None, root=None, model=None) -> dict:
         p["name"] = title_case(name)
     if root:
         p["root"] = _check_root(root)
+        p.pop("default_root", None)  # a real folder was chosen
     if model and config.get_model(model):
         p["model"] = model
     _write(_pdir(pid) / "project.json", json.dumps(p, indent=2))
@@ -136,7 +147,7 @@ def ensure_default() -> None:
     """First run: create a 'default' project and migrate any pre-project sessions into it."""
     if list_projects():
         return
-    p = create_project("default")
+    p = create_project("default", str(config.WORKDIR))
     legacy = config.LEGACY_SESSIONS_DIR
     if legacy.is_dir():
         for f in legacy.glob("*.json"):

@@ -94,7 +94,7 @@ def chat(resume: str | None = None, project: str | None = None) -> None:
                 elif cmd == "project":
                     if arg.startswith("new "):
                         name, _, root = arg[4:].strip().partition(" ")
-                        proj = store.create_project(name, root.strip() or None)
+                        proj = store.create_project(name, root.strip() or str(config.WORKDIR))
                         s = store.create(proj["id"])
                     else:
                         p = _find_project(arg)
