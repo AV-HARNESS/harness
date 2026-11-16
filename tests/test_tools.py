@@ -97,7 +97,7 @@ def test_long_output_is_clipped_in_the_middle(inproject):
 
 def test_every_registered_tool_is_declared():
     names = {d["name"] for d in tools.DECLARATIONS[0]["functionDeclarations"]}
-    assert names == set(tools.REGISTRY) and len(names) == 10
+    assert names == set(tools.REGISTRY) and len(names) == 12
 
 
 @covers("R-TOOL-09")
@@ -138,3 +138,19 @@ def test_files_are_utf8_regardless_of_os_default(inproject, monkeypatch):
     assert txt in tools.run("read_file", dict(path="u.md"))
     tools.run("edit_file", dict(path="u.md", old="done", new="ok \U0001f7e2"))
     assert "\U0001f7e2" in tools.run("read_file", dict(path="u.md"))
+
+
+@covers("R-TOOL-11")
+def test_read_files_and_search_save_round_trips(inproject):
+    root = tools._root()
+    (root / "a.py").write_text("alpha\nneedle one\n", encoding="utf-8")
+    (root / "sub").mkdir()
+    (root / "sub" / "b.txt").write_text("beta\nNeedle two\n", encoding="utf-8")
+    (root / "node_modules").mkdir()
+    (root / "node_modules" / "skip.txt").write_text("needle hidden\n", encoding="utf-8")
+    out = tools.run("read_files", {"paths": ["a.py", "sub/b.txt", "missing.txt"]})
+    assert "===== a.py =====" in out and "beta" in out and "ERROR" in out.split("missing.txt")[1]
+    hits = tools.run("search", {"pattern": "needle"})
+    assert "a.py:2: needle one" in hits and "b.txt:2: Needle two" in hits and "hidden" not in hits
+    assert "b.txt" not in tools.run("search", {"pattern": "needle", "glob": "*.py"})
+    assert tools.run("search", {"pattern": "zzz-nothing"}) == "(no matches)"

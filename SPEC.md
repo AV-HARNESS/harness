@@ -19,6 +19,7 @@ Change behaviour => change this file and the test in the same commit.
 - **R-LOOP-14** Context blocks are chosen per prompt: when blocks exceed ~6k chars, only those matching the recent user text (keyword overlap, block name weighted, name mentioned = boost) are loaded, the rest are listed with a first-line hint for `read_block`; a prompt with no usable words keeps the previous selection; small block sets always load whole.
 - **R-LOOP-15** After a session's first reply, a short (3-6 word) title is written by the model at low effort in the background (HARNESS_AUTO_TITLE=0 disables); a title the user typed is never replaced.
 - **R-LOOP-16** While a model call streams, the loop emits `text_delta` events as text arrives and the usual final `text` event once the message is complete; history stores only the assembled message.
+- **R-LOOP-17** The system prompt asks for few steps with batched independent calls; when one step contains several read-only tool calls they run concurrently and results keep the model's order.
 - **R-LOOP-06** Model "thought" parts are never shown to the user, and are kept verbatim in history (thought signatures survive).
 - **R-LOOP-07** When the prompt exceeds `HARNESS_COMPACT_AT`, older turns are replaced by a summary and the last `HARNESS_KEEP_TURNS` user turns are kept verbatim.
 - **R-LOOP-08** A new session is titled from the first user message; the session is saved after every step.
@@ -73,6 +74,7 @@ Change behaviour => change this file and the test in the same commit.
 
 - **R-TOOL-09** File tools (read, write, edit, list) work only inside the linked project folder: `..`, absolute paths and symlinks that lead outside are refused (`HARNESS_CONFINE=0` turns this off). `bash` starts in the folder but is not sandboxed.
 - **R-TOOL-10** All files are read and written as UTF-8 regardless of the OS default (emoji and non-English text work on Windows).
+- **R-TOOL-11** `read_files` (several files, one call) and `search` (regex across the project, skips .git/node_modules/binaries, honours the file guard) exist so tasks need fewer model round trips.
 
 ## 6. Privacy (`redact.py`, `tools.py`)
 - **R-PRIV-01** Before any model call, API keys and tokens (Google, OpenAI/Anthropic style, GitHub, AWS, Slack, JWT, private keys, bearer headers) are replaced by `[REDACTED:kind]`.
