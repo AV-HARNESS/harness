@@ -169,3 +169,17 @@ def test_sidebar_lists_projects_and_autohides(app):
         page.wait_for_timeout(400)
         assert page.eval_on_selector("aside", "e => e.getBoundingClientRect().left") >= 0
         browser.close()
+
+
+@covers("R-UI-07")
+def test_no_login_warning_when_some_model_is_usable(app):
+    base, model, projects, api = app  # the app has a usable OpenAI-compatible model and no Gemini credentials
+    with playwright.sync_playwright() as pw:
+        browser = pw.chromium.launch(executable_path=CHROME, args=["--no-sandbox"])
+        page = browser.new_page()
+        page.goto(base)
+        page.wait_for_selector("#modelbtn")
+        page.wait_for_timeout(500)
+        text = page.inner_text("#msgs")
+        assert "Not logged in" not in text and "VERTEX_PROJECT" not in text and "No model is available" not in text
+        browser.close()

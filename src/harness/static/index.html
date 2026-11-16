@@ -862,8 +862,8 @@ $('modelbtn').ondblclick = () => loadModels('recheck');
   for (const k of Object.keys(cfg.models)) $('model').add(new Option(`${k} · ${cfg.models[k].split(':').slice(1).join(':')}`, k));
   await loadProjects();
   loadModels();
-  if (!cfg.has_api_key && !cfg.logged_in) add('err', 'Not logged in. Set <code>GEMINI_API_KEY</code> in your .env, or run <code>python -m harness login</code> for Vertex, then reload.');
-  if (!cfg.has_api_key && !cfg.project) add('err', 'VERTEX_PROJECT is not set. Set <code>GEMINI_API_KEY</code> in your .env to use the Gemini API instead.');
+  // only complain when there is genuinely nothing to talk to: any usable model (OpenAI key, Anthropic key, gateway...) is fine
+  if (!Object.keys(cfg.models).length) add('err', 'No model is available yet. Add a key to your .env (<code>OPENAI_API_KEY</code>, <code>GEMINI_API_KEY</code> or <code>ANTHROPIC_API_KEY</code>), or run <code>python -m harness login</code> for Vertex, then reload.');
 })();
 </script>
 </body>
