@@ -57,11 +57,11 @@ web_search needs a Gemini model configured; other tools work with every provider
     CLI: /projects /project <id> /project new <name> [root] /root <path> /blocks /block <name> /new /sessions /resume
 
 ## Optional env
-    GEMINI_FLASH_MODEL / GEMINI_PRO_MODEL   model IDs (defaults gemini-2.5-flash / gemini-2.5-pro)
+    GEMINI_FLASH_MODEL / GEMINI_PRO_MODEL   model IDs (defaults gemini-3.7-flash / gemini-3.1-pro-preview)
     VERTEX_HOST          gateway base URL if your org fronts Vertex
     GOOGLE_REFRESH_TOKEN skip browser login;  GOOGLE_ACCESS_TOKEN  static bearer token
     HARNESS_WORKDIR      default root for new projects (default: cwd)
-    HARNESS_COMPACT_AT   auto-summarize when prompt tokens exceed this (default 600000)
+    HARNESS_COMPACT_AT   auto-summarize when prompt tokens exceed this (default 50000; keep it low, big prompts make every step slower)
 
 ## Layout
     auth.py OAuth | llm.py providers (gemini/openai/anthropic) | verify.py | tools.py bash/files/web | agent.py loop + compaction

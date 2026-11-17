@@ -95,6 +95,19 @@ def test_thoughts_hidden_but_kept_verbatim(session, fake):
 
 
 @covers("R-LOOP-07")
+def test_default_compaction_threshold_is_low_and_docs_agree():
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    assert '"HARNESS_COMPACT_AT", "50000"' in (root / "src" / "harness" / "config.py").read_text(encoding="utf-8")
+    for f in (".env.example", "README.md"):
+        t = (root / f).read_text(encoding="utf-8")
+        assert "600000" not in t, f + " still documents the old 600000 threshold"
+
+
+def test_system_prompt_points_at_read_file_ranges_not_bash_slicing():
+    assert "read_file with offset and limit" in agent.BASE_SYSTEM and "python -c" in agent.BASE_SYSTEM
+
+
 def test_compaction_replaces_old_turns_keeps_recent(session, fake, monkeypatch):
     monkeypatch.setattr(config, "KEEP_TURNS", 2)
     for i in range(5):

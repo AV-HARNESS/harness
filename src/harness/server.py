@@ -16,6 +16,7 @@ app = FastAPI(title="Gemini harness")
 store.ensure_default()
 STATIC = Path(__file__).parent / "static"
 _stops: dict[str, threading.Event] = {}
+errors.logger().info("compaction starts above %d prompt tokens (HARNESS_COMPACT_AT)", config.COMPACT_AT)
 _busy: set[str] = set()
 _inboxes: dict[str, queue.Queue] = {}
 _live: dict[str, dict] = {}  # sessions being worked on: the one in-memory copy every reader and writer shares
