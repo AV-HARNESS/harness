@@ -2,7 +2,7 @@
 import os
 
 from .. import auth, config, errors
-from . import _post, _stream_events, _with_stream_fallback
+from . import _NO_STREAM, _post, _stream_events, _with_stream_fallback, gcache
 
 
 def gemini_mode(spec: dict) -> str:
@@ -50,6 +50,7 @@ def generate(spec: dict, contents: list, system: str, tools, retries: int, on_te
         base = spec.get("base_url", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
         url = f"{base}/models/{spec['model']}:generateContent"
         headers = {"x-goog-api-key": key, **spec.get("headers", {})}
+        cache_url, model_ref = f"{base}/cachedContents", f"models/{spec['model']}"
     else:
         project = spec.get("project") or config.PROJECT
         if not project:
@@ -61,30 +62,48 @@ def generate(spec: dict, contents: list, system: str, tools, retries: int, on_te
         url = (f"{host.rstrip('/')}/v1/projects/{project}/locations/{loc}"
                f"/publishers/google/models/{spec['model']}:generateContent")
         headers = {"Authorization": f"Bearer {auth.get_access_token()}", **spec.get("headers", {})}
+        cache_url = f"{host.rstrip('/')}/v1/projects/{project}/locations/{loc}/cachedContents"
+        model_ref = f"projects/{project}/locations/{loc}/publishers/google/models/{spec['model']}"
 
-    def streamed(cb):
-        parts, usage, last = [], {}, {}
-        for ev in _stream_events(url.replace(":generateContent", ":streamGenerateContent") + "?alt=sse", headers, body, retries):
-            usage = ev.get("usageMetadata") or usage
-            last = (ev.get("candidates") or [last])[0]
-            for p in (last.get("content") or {}).get("parts") or []:
-                if "text" in p and "functionCall" not in p:
-                    thought = bool(p.get("thought"))
-                    open_ = parts and "text" in parts[-1] and bool(parts[-1].get("thought")) == thought \
-                        and "thoughtSignature" not in parts[-1]
-                    if open_:  # merge chunks of one text part; a part that already carries its signature stays closed
-                        parts[-1]["text"] += p["text"]
-                        if p.get("thoughtSignature"):
-                            parts[-1]["thoughtSignature"] = p["thoughtSignature"]
+    def fetch(b):
+        def streamed(cb):
+            parts, usage, last = [], {}, {}
+            for ev in _stream_events(url.replace(":generateContent", ":streamGenerateContent") + "?alt=sse", headers, b, retries):
+                usage = ev.get("usageMetadata") or usage
+                last = (ev.get("candidates") or [last])[0]
+                for p in (last.get("content") or {}).get("parts") or []:
+                    if "text" in p and "functionCall" not in p:
+                        thought = bool(p.get("thought"))
+                        open_ = parts and "text" in parts[-1] and bool(parts[-1].get("thought")) == thought \
+                            and "thoughtSignature" not in parts[-1]
+                        if open_:  # merge chunks of one text part; a part that already carries its signature stays closed
+                            parts[-1]["text"] += p["text"]
+                            if p.get("thoughtSignature"):
+                                parts[-1]["thoughtSignature"] = p["thoughtSignature"]
+                        else:
+                            parts.append(dict(p))
+                        if p["text"] and not thought:
+                            cb(p["text"])
                     else:
-                        parts.append(dict(p))
-                    if p["text"] and not thought:
-                        cb(p["text"])
-                else:
-                    parts.append(p)
-        return {"candidates": [{**last, "content": {"parts": parts}}], "usageMetadata": usage}
+                        parts.append(p)
+            return {"candidates": [{**last, "content": {"parts": parts}}], "usageMetadata": usage}
 
-    data = _with_stream_fallback(url, on_text, streamed, lambda: _post(url, headers, body, retries))
+        return _with_stream_fallback(url, on_text, streamed, lambda: _post(url, headers, b, retries))
+
+    plan = gcache.prepare(cache_url, model_ref, headers, system, tools, contents)
+    if plan:
+        no_stream_before = url in _NO_STREAM
+        try:
+            data = fetch(gcache.request_body(body, contents, *plan))
+        except RuntimeError as e:
+            if not str(e).startswith("HTTP 4") or str(e).startswith("HTTP 429"):
+                raise
+            if not no_stream_before:
+                _NO_STREAM.discard(url)  # the cache was at fault, not streaming
+            gcache.disable(cache_url, f"use failed: {e}")  # e.g. cache expired or not allowed: send the full request
+            data = fetch(body)
+    else:
+        data = fetch(body)
     cands = data.get("candidates") or []
     if not cands:
         raise RuntimeError(f"No candidates returned: {str(data)[:800]}")

@@ -383,3 +383,64 @@ def test_openai_and_anthropic_stream_text_and_tool_calls(fake, monkeypatch):
     c, usage, _ = providers.generate("a", HIST, "S", DECL, on_text=seen.append)
     assert seen == ["He", "y"] and usage["promptTokenCount"] == 8
     assert c["parts"] == [{"text": "Hey"}, {"functionCall": {"name": "t", "args": {"a": "3"}}}]
+
+
+def _hist(n_pairs):
+    h = [{"role": "user", "parts": [{"text": "first " + "x" * 400}]}]
+    for i in range(n_pairs):
+        h += [{"role": "model", "parts": [{"text": f"m{i}"}]}, {"role": "user", "parts": [{"text": f"u{i}"}]}]
+    return h
+
+
+@covers("R-PROV-15")
+def test_gemini_explicit_cache_is_created_then_reused(fake, model, monkeypatch):
+    monkeypatch.setattr(config, "GEMINI_CACHE_MIN", 50)
+    monkeypatch.setattr(config, "GEMINI_CACHE_REFRESH", 10_000)
+    fake.push((200, {"name": "cachedContents/abc"}), (200, gem(text("one"), tokens=500)), (200, gem(text("two"))))
+    providers.generate(model, _hist(2), "SYS", DECL)
+    create, use = fake.requests[0], fake.requests[1]
+    assert create["path"] == "/v1beta/cachedContents" and create["body"]["model"] == "models/m"
+    assert create["body"]["systemInstruction"]["parts"][0]["text"] == "SYS" and create["body"]["tools"] == DECL
+    assert len(create["body"]["contents"]) == 4  # everything but the newest message
+    assert use["body"]["cachedContent"] == "cachedContents/abc" and "systemInstruction" not in use["body"]
+    assert "tools" not in use["body"] and len(use["body"]["contents"]) == 1
+    providers.generate(model, _hist(3), "SYS", DECL)  # history grew: same cache, only the new messages are sent
+    assert len(fake.requests) == 3 and fake.requests[2]["path"].endswith(":generateContent")
+    assert fake.requests[2]["body"]["cachedContent"] == "cachedContents/abc" and len(fake.requests[2]["body"]["contents"]) == 3
+
+
+@covers("R-PROV-15")
+def test_gemini_cache_rebuilt_when_prefix_changes_or_uncached_part_grows(fake, model, monkeypatch):
+    monkeypatch.setattr(config, "GEMINI_CACHE_MIN", 50)
+    monkeypatch.setattr(config, "GEMINI_CACHE_REFRESH", 10_000)
+    fake.push((200, {"name": "cachedContents/a"}), (200, gem(text("1"))), (200, {"name": "cachedContents/b"}), (200, gem(text("2"))))
+    providers.generate(model, _hist(2), "SYS", DECL)
+    edited = _hist(3)
+    edited[1] = {"role": "model", "parts": [{"text": "CHANGED"}]}  # an old message was rewritten (stub, edit, compaction)
+    providers.generate(model, edited, "SYS", DECL)
+    assert fake.requests[2]["path"] == "/v1beta/cachedContents" and fake.requests[3]["body"]["cachedContent"] == "cachedContents/b"
+    monkeypatch.setattr(config, "GEMINI_CACHE_REFRESH", 1)  # now the uncached tail counts as big: refresh
+    fake.push((200, {"name": "cachedContents/c"}), (200, gem(text("3"))))
+    providers.generate(model, _hist(5), "SYS", DECL)
+    assert fake.requests[4]["path"] == "/v1beta/cachedContents"
+
+
+@covers("R-PROV-15")
+def test_gemini_cache_refusal_falls_back_and_switches_caching_off(fake, model, monkeypatch):
+    monkeypatch.setattr(config, "GEMINI_CACHE_MIN", 50)
+    fake.push((403, {"error": "no caching here"}), (200, gem(text("plain"))), (200, gem(text("again"))))
+    c, _, _ = providers.generate(model, _hist(2), "SYS", DECL)
+    assert c["parts"][0]["text"] == "plain"
+    assert fake.requests[1]["body"]["systemInstruction"]["parts"][0]["text"] == "SYS" and "cachedContent" not in fake.requests[1]["body"]
+    providers.generate(model, _hist(3), "SYS", DECL)  # switched off: no further create attempts
+    assert [r["path"].endswith("cachedContents") for r in fake.requests] == [True, False, False]
+
+
+@covers("R-PROV-15")
+def test_gemini_cache_use_failure_retries_with_the_full_request(fake, model, monkeypatch):
+    monkeypatch.setattr(config, "GEMINI_CACHE_MIN", 50)
+    fake.push((200, {"name": "cachedContents/gone"}), (404, {"error": "cache expired"}), (200, gem(text("ok"))))
+    c, _, _ = providers.generate(model, _hist(2), "SYS", DECL)
+    assert c["parts"][0]["text"] == "ok"
+    full = fake.requests[2]["body"]
+    assert "cachedContent" not in full and full["systemInstruction"] and len(full["contents"]) == 5
