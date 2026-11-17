@@ -108,6 +108,10 @@ WORKDIR = Path(os.environ.get("HARNESS_WORKDIR", os.getcwd())).resolve()  # defa
 MAX_STEPS = int(os.environ.get("HARNESS_MAX_STEPS", "200"))
 COMPACT_AT = int(os.environ.get("HARNESS_COMPACT_AT", "80000"))        # compact when prompt exceeds this
 KEEP_TURNS = int(os.environ.get("HARNESS_KEEP_TURNS", "6"))            # full turns to keep after compaction
+GEMINI_CACHE = os.environ.get("HARNESS_GEMINI_CACHE", "1") != "0"      # Gemini explicit context cache for big prompts
+GEMINI_CACHE_MIN = int(os.environ.get("HARNESS_GEMINI_CACHE_MIN", "12000"))      # est. tokens before a cache is worth creating
+GEMINI_CACHE_REFRESH = int(os.environ.get("HARNESS_GEMINI_CACHE_REFRESH", "6000"))  # new uncached tokens that trigger a new cache
+GEMINI_CACHE_TTL = int(os.environ.get("HARNESS_GEMINI_CACHE_TTL", "900"))        # seconds a cache lives
 CACHE = os.environ.get("HARNESS_CACHE", "1") != "0"  # mark the stable prompt prefix for provider-side caching (Anthropic)
 STUB_BATCH = 6  # stub old results in batches so the cached prefix only changes every few steps
 STUB_AFTER = int(os.environ.get("HARNESS_STUB_AFTER", "10"))  # tool results older than this many messages shrink to a stub (0 = off)
