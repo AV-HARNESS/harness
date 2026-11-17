@@ -62,10 +62,10 @@ def generate(spec: dict, contents: list, system: str, tools, retries: int, on_te
         url = (f"{host.rstrip('/')}/v1/projects/{project}/locations/{loc}"
                f"/publishers/google/models/{spec['model']}:generateContent")
         headers = {"Authorization": f"Bearer {auth.get_access_token()}", **spec.get("headers", {})}
-        cache_url = f"{host.rstrip('/')}/v1/projects/{project}/locations/{loc}/cachedContents"
+        cache_url = [f"{host.rstrip('/')}/{v}/projects/{project}/locations/{loc}/cachedContents" for v in ("v1beta1", "v1")]
         model_ref = f"projects/{project}/locations/{loc}/publishers/google/models/{spec['model']}"
 
-    def fetch(b):
+    def fetch(b, url=url):
         def streamed(cb):
             parts, usage, last = [], {}, {}
             for ev in _stream_events(url.replace(":generateContent", ":streamGenerateContent") + "?alt=sse", headers, b, retries):
@@ -94,13 +94,14 @@ def generate(spec: dict, contents: list, system: str, tools, retries: int, on_te
     if plan:
         no_stream_before = url in _NO_STREAM
         try:
-            data = fetch(gcache.request_body(body, contents, *plan))
+            call_url = url.replace("/v1/", "/v1beta1/", 1) if "/v1beta1/" in plan[2] else url  # same API version as the cache
+            data = fetch(gcache.request_body(body, contents, *plan), call_url)
         except RuntimeError as e:
             if not str(e).startswith("HTTP 4") or str(e).startswith("HTTP 429"):
                 raise
             if not no_stream_before:
                 _NO_STREAM.discard(url)  # the cache was at fault, not streaming
-            gcache.disable(cache_url, f"use failed: {e}")  # e.g. cache expired or not allowed: send the full request
+            gcache.disable(cache_url if isinstance(cache_url, str) else cache_url[0], f"use failed: {e}")  # e.g. cache expired or not allowed: send the full request
             data = fetch(body)
     else:
         data = fetch(body)
