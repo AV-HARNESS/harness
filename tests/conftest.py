@@ -57,7 +57,7 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setitem(discover._cache, "groups", [])
     monkeypatch.setattr(errors, "_log", None)
     from harness.providers import gcache
-    gcache._CACHES.clear(); gcache._OFF.clear()
+    gcache._CACHES.clear(); gcache._OFF.clear(); gcache._GOOD.clear()
     monkeypatch.setattr(gcache, "_delete", lambda *a, **k: None)
     monkeypatch.setattr("os.environ", dict(__import__("os").environ, HARNESS_MODEL_ALLOW=""))
     yield

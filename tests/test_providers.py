@@ -444,3 +444,28 @@ def test_gemini_cache_use_failure_retries_with_the_full_request(fake, model, mon
     assert c["parts"][0]["text"] == "ok"
     full = fake.requests[2]["body"]
     assert "cachedContent" not in full and full["systemInstruction"] and len(full["contents"]) == 5
+
+
+@covers("R-PROV-15")
+def test_gemini_cache_tries_the_other_api_version_on_404_and_remembers_it(fake, monkeypatch):
+    from harness.providers import gcache
+    monkeypatch.setattr(config, "GEMINI_CACHE_MIN", 50)
+    urls = [fake.url + "/v1beta1/projects/p/locations/l/cachedContents", fake.url + "/v1/projects/p/locations/l/cachedContents"]
+    fake.push((404, "<html><title>Error 404</title></html>", "text/html"), (200, {"name": "projects/p/locations/l/cachedContents/9"}))
+    plan = gcache.prepare(urls, "m", {}, "SYS", DECL, _hist(2))
+    assert plan[0].endswith("/9") and plan[2] == urls[1]
+    assert [r["path"] for r in fake.requests] == ["/v1beta1/projects/p/locations/l/cachedContents", "/v1/projects/p/locations/l/cachedContents"]
+    gcache._CACHES.clear()  # next cache goes straight to the address that worked
+    fake.push((200, {"name": "projects/p/locations/l/cachedContents/10"}))
+    gcache.prepare(urls, "m", {}, "SYS", DECL, _hist(2))
+    assert fake.requests[2]["path"].startswith("/v1/")
+
+
+@covers("R-PROV-15")
+def test_gemini_cache_failure_log_has_no_html(fake, monkeypatch, caplog):
+    from harness.providers import gcache
+    monkeypatch.setattr(config, "GEMINI_CACHE_MIN", 50)
+    fake.push((404, "<!DOCTYPE html><html lang=en><title>Error 404 (Not Found)!!1</title></html>", "text/html"))
+    with caplog.at_level("WARNING"):
+        assert gcache.prepare(fake.url + "/x/cachedContents", "m", {}, "SYS", DECL, _hist(2)) is None
+    assert "<" not in caplog.text and "404" in caplog.text
