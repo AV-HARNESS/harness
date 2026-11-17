@@ -36,6 +36,7 @@ class Patch(BaseModel):
     model: str | None = None
     instructions: str | None = None
     effort: str | None = None
+    project: str | None = None
 
 
 class New(Patch):
@@ -256,6 +257,13 @@ def _retitle(sid: str) -> None:
 @app.patch("/api/sessions/{sid}")
 def patch_session(sid: str, b: Patch):
     s = _get(sid)
+    if b.project and b.project != s["project"]:
+        if sid in _busy:
+            raise HTTPException(409, "session is running; stop it first")
+        try:
+            return store.move(sid, b.project)
+        except KeyError:
+            raise HTTPException(404, "no such project")
     if b.title is not None:
         s["title"] = store.title_case(b.title)
         s["title_auto"] = False  # a name the user chose is never replaced

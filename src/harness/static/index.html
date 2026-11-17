@@ -212,6 +212,10 @@
   .pr:hover:not(.on), .s:hover:not(.on) { background:var(--hover); }
   .b { color:var(--mute); } .b:hover { color:var(--ink); }
   #blocks { border-top:1px solid var(--line); margin-top:8px; padding-top:2px; }
+  .s .sdots { position:absolute; right:4px; top:50%; transform:translateY(-50%); border:none; background:transparent; color:var(--mute); padding:0 6px; font-size:16px; line-height:1.4; border-radius:6px; opacity:.7; }
+  .s .sdots:hover, .s.on .sdots { opacity:1; color:var(--ink); background:var(--hover); }
+  .s .t { padding-right:26px; }
+  .mvmenu { min-width:200px; max-height:50vh; overflow:auto; } .mvmenu button { display:flex; align-items:center; gap:8px; padding:7px 11px; width:100%; text-align:left; } .mvmenu button .i { width:14px; height:14px; } .mvmenu b { font-weight:500; flex:1; overflow:hidden; text-overflow:ellipsis; } .mvmenu hr { border:none; border-top:1px solid var(--line); margin:6px 0; } .mvmenu .mh { display:block; padding:4px 11px; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--mute); } .mvmenu .danger:hover { color:var(--accent); }
 </style>
 </head>
 <body>
@@ -396,6 +400,31 @@ function render(m, i) {
 }
 function setTok(n) { $('tok').textContent = n ? `${(n/1000).toFixed(1)}k ctx` : ''; }
 
+function sessionMenu(btn, s, rename) {  // the ... menu of a session: rename, move to another project, delete
+  document.querySelectorAll('.mvmenu').forEach(m => m.remove());
+  const m = document.createElement('div'); m.className = 'menu mvmenu';
+  const others = projects.filter(p => p.id !== s.project);
+  m.innerHTML = `<button data-a="ren">${SVG('pen')}<b>Rename</b></button>`
+    + (others.length ? '<hr><span class="mh">Move to project</span>' + others.map(p => `<button data-p="${esc(p.id)}">${SVG('folder')}<b>${esc(p.name)}</b></button>`).join('') : '')
+    + `<hr><button data-a="del" class="danger">${SVG('x')}<b>Delete</b></button>`;
+  const r = btn.getBoundingClientRect(); m.style.cssText = `position:fixed;left:${Math.min(r.left, innerWidth - 240)}px;top:${r.bottom + 4}px;z-index:50;display:block;bottom:auto`;
+  m.querySelector('[data-a=ren]').onclick = ev => { m.remove(); rename(ev); };
+  m.querySelector('[data-a=del]').onclick = async ev => {
+    ev.stopPropagation(); m.remove(); if (!confirm('Delete this session?')) return;
+    await api('DELETE', '/api/sessions/' + s.id);
+    if (cur && cur.id === s.id) { cur = null; $('msgs').innerHTML = ''; }
+    loadList();
+  };
+  m.querySelectorAll('[data-p]').forEach(b => b.onclick = async ev => {
+    ev.stopPropagation(); m.remove();
+    try { await api('PATCH', '/api/sessions/' + s.id, {project: b.dataset.p}); } catch (err) { alert(err.message || err); return; }
+    if (cur && cur.id === s.id) { cur = null; $('msgs').innerHTML = ''; }
+    loadList();
+  });
+  document.body.appendChild(m);
+  setTimeout(() => document.addEventListener('click', () => m.remove(), {once: true}), 0);
+}
+
 async function loadList() {
   const ss = await api('GET', '/api/sessions?project=' + proj.id);
   $('list').innerHTML = '';
@@ -406,18 +435,14 @@ async function loadList() {
     if (g !== lastGroup) { lastGroup = g; const h = document.createElement('div'); h.className = 'grp'; h.textContent = g; $('list').appendChild(h); }
     const d = document.createElement('div'); d.className = 's' + (cur && cur.id === s.id ? ' on' : '');
     d.title = `${s.model || ''} · ${ago(s.updated)}`;
-    d.innerHTML = `<div class="t">${esc(s.title)}</div><button class="x" title="Delete">${SVG('x')}</button>`;
+    d.innerHTML = `<div class="t">${esc(s.title)}</div><button class="sdots" title="Rename / move / delete">&hellip;</button>`;
     d.onclick = () => open(s.id);
-    d.querySelector('.t').ondblclick = async e => {  // double-click a session title to rename it
+    const rename = async e => {
       e.stopPropagation(); const n = prompt('Rename session', s.title);
       if (n && n.trim() && n !== s.title) { await api('PATCH', '/api/sessions/' + s.id, {title: n.trim()}); if (cur && cur.id === s.id) $('title').value = n.trim(); loadList(); }
     };
-    d.querySelector('.x').onclick = async e => {
-      e.stopPropagation(); if (!confirm('Delete this session?')) return;
-      await api('DELETE', '/api/sessions/' + s.id);
-      if (cur && cur.id === s.id) { cur = null; $('msgs').innerHTML = ''; }
-      loadList();
-    };
+    d.querySelector('.t').ondblclick = rename;
+    d.querySelector('.sdots').onclick = e => { e.stopPropagation(); sessionMenu(e.currentTarget, s, rename); };
     $('list').appendChild(d);
   }
 }

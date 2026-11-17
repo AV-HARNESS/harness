@@ -230,6 +230,20 @@ def delete(sid: str) -> None:
         pass
 
 
+def move(sid: str, project: str) -> dict:
+    """Move a session (its whole history) to another project. The context blocks it sees change with the project."""
+    s = load(sid)
+    get_project(project)  # KeyError if the target does not exist
+    if s["project"] == project:
+        return s
+    old = _spath(sid)
+    s["project"] = project
+    s.pop("block_sel", None)  # selection was for the old project's blocks
+    save(s)  # writes into the new project's folder
+    old.unlink()
+    return s
+
+
 def list_all(project: str) -> list[dict]:
     out = []
     for p in (_pdir(project) / "sessions").glob("*.json"):
