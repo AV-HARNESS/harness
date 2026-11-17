@@ -572,9 +572,15 @@ function drawModelMenu() {
 $('modelbtn').onclick = e => { e.stopPropagation(); if ($('mpmenu').hidden) drawModelMenu(); $('mpmenu').hidden = !$('mpmenu').hidden; $('modelbtn').setAttribute('aria-expanded', !$('mpmenu').hidden); };
 setEffort('');
 $('model').onchange = async () => { syncModelBtn(); if (cur) await api('PATCH', '/api/sessions/' + cur.id, {model: $('model').value}); loadList(); };
-$('compact').onclick = async () => {
-  if (!cur) return; const r = await api('POST', `/api/sessions/${cur.id}/compact`);
-  if (r.compacted) open(cur.id); else add('sys', 'Nothing to compact yet.');
+$('compact').onclick = async () => {  // summarizing a big history takes a while, so show it is working and report the outcome
+  const b = $('compact'); if (!cur || b.disabled) return;
+  const label = b.textContent; b.disabled = true; b.textContent = 'Compacting\u2026';
+  try {
+    const r = await api('POST', `/api/sessions/${cur.id}/compact`);
+    if (r.compacted) { await open(cur.id); add('sys', `Context compacted: about ${Math.round(r.before / 1000)}k \u2192 ${Math.round(r.after / 1000)}k tokens of history.`); }
+    else add('sys', r.reason || 'Nothing to compact yet.');
+  } catch (e) { add('sys', 'Compact failed: ' + (e.message || e)); }
+  finally { b.disabled = false; b.textContent = label; }
 };
 async function loadBlocks() {
   const bs = await api('GET', `/api/projects/${proj.id}/blocks`);
