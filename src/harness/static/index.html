@@ -214,6 +214,7 @@
   .mvmenu { min-width:200px; max-height:50vh; overflow:auto; } .mvmenu button { display:flex; align-items:center; gap:8px; padding:7px 11px; width:100%; text-align:left; } .mvmenu button .i { width:14px; height:14px; } .mvmenu b { font-weight:500; flex:1; overflow:hidden; text-overflow:ellipsis; } .mvmenu hr { border:none; border-top:1px solid var(--line); margin:6px 0; } .mvmenu .mh { display:block; padding:4px 11px; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--mute); } .mvmenu .danger:hover { color:var(--accent); }
   .sec button { width:26px; height:26px; padding:0; display:grid; place-items:center; border-radius:8px; }
   .sec button .i { width:16px; height:16px; }
+  #tok.warn { color:var(--accent); font-weight:600; }
 </style>
 </head>
 <body>
@@ -395,7 +396,11 @@ function render(m, i) {
     if (p.functionResponse) toolResult(p.functionResponse.response.output);
   }
 }
-function setTok(n) { $('tok').textContent = n ? `${(n/1000).toFixed(1)}k ctx` : ''; }
+function setTok(n) {
+  const t = $('tok'); t.textContent = n ? `${(n/1000).toFixed(1)}k ctx` : '';
+  const at = cfg && cfg.compact_at; t.title = at ? `Prompt size sent with every step. Compacts above ${Math.round(at/1000)}k (HARNESS_COMPACT_AT).` : 'Prompt size sent with every step';
+  t.classList.toggle('warn', !!(at && n > at * 1.5));  // way past the limit: compaction is not happening
+}
 
 function sessionMenu(btn, s, rename) {  // the ... menu of a session: rename, move to another project, delete
   document.querySelectorAll('.mvmenu').forEach(m => m.remove());
