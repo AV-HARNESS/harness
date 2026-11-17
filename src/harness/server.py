@@ -297,7 +297,17 @@ def compact(sid: str):
     if sid in _busy:
         raise HTTPException(409, "session is running; try again when it finishes")
     s = _get(sid)
-    return {"compacted": agent.compact(s)}
+    before = agent._chars(s["messages"]) // 4  # rough tokens of the history itself
+    _busy.add(sid)  # keep a chat from starting while the summary is being written
+    try:
+        ok = agent.compact(s)
+    except Exception as e:
+        raise HTTPException(500, f"summary failed: {e}")
+    finally:
+        _busy.discard(sid)
+    if not ok:
+        return {"compacted": False, "reason": "Nothing to compact yet: the history is too short to summarize."}
+    return {"compacted": True, "before": before, "after": agent._chars(s["messages"]) // 4}
 
 
 @app.post("/api/sessions/{sid}/queue")

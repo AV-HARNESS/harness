@@ -65,7 +65,7 @@ def test_session_api(client, project):
     assert client.get("/api/sessions/zzzzzz").status_code == 404
     assert client.get("/api/sessions?project=ghost").status_code == 404
     assert client.post("/api/sessions", json={"project": "ghost"}).status_code == 404
-    assert client.post(f"/api/sessions/{s['id']}/compact").json() == {"compacted": False}
+    assert client.post(f"/api/sessions/{s['id']}/compact").json()["compacted"] is False
     assert client.post("/api/sessions/nope/stop").json() == {"ok": True}
     client.delete(f"/api/sessions/{s['id']}")
     assert client.get(f"/api/sessions/{s['id']}").status_code == 404
@@ -409,3 +409,19 @@ def test_patch_moves_session_to_another_project(client, session):
         assert client.patch(f"/api/sessions/{sid}", json={"project": session["project"]}).status_code == 409
     finally:
         server._busy.discard(sid)
+
+
+@covers("R-SRV-18")
+def test_compact_endpoint_reports_outcome_and_errors(client, session, monkeypatch):
+    sid = session["id"]
+    r = client.post(f"/api/sessions/{sid}/compact").json()
+    assert r["compacted"] is False and "too short" in r["reason"]
+    monkeypatch.setattr(server.agent, "compact", lambda s, emit=None: True)
+    r = client.post(f"/api/sessions/{sid}/compact").json()
+    assert r["compacted"] is True and {"before", "after"} <= set(r)
+    def boom(s, emit=None):
+        raise RuntimeError("HTTP 500 from gateway")
+    monkeypatch.setattr(server.agent, "compact", boom)
+    resp = client.post(f"/api/sessions/{sid}/compact")
+    assert resp.status_code == 500 and "gateway" in resp.json()["detail"]
+    assert sid not in server._busy  # not left stuck after a failure
