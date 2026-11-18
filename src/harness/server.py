@@ -301,22 +301,40 @@ def stop(sid: str):
     return {"ok": True}
 
 
+_compact_jobs: dict[str, dict] = {}  # session id -> {"state": running|done|error, ...}
+
+
+def _run_compact(sid: str, s: dict) -> None:
+    before = agent._chars(s["messages"]) // 4  # rough tokens of the history itself
+    try:
+        ok = agent.compact(s)
+        if ok:
+            _compact_jobs[sid] = {"state": "done", "compacted": True, "before": before, "after": agent._chars(s["messages"]) // 4}
+        else:
+            _compact_jobs[sid] = {"state": "done", "compacted": False, "reason": "Nothing to compact yet: the history is too short to summarize."}
+    except Exception as e:
+        errors.report_ref(e, f"compact session={sid}")
+        _compact_jobs[sid] = {"state": "error", "error": f"summary failed: {e}"}
+    finally:
+        _busy.discard(sid)
+
+
 @app.post("/api/sessions/{sid}/compact")
 def compact(sid: str):
+    """Start summarizing in the background (a big history takes minutes; a browser request would time out)."""
     if sid in _busy:
         raise HTTPException(409, "session is running; try again when it finishes")
     s = _get(sid)
-    before = agent._chars(s["messages"]) // 4  # rough tokens of the history itself
     _busy.add(sid)  # keep a chat from starting while the summary is being written
-    try:
-        ok = agent.compact(s)
-    except Exception as e:
-        raise HTTPException(500, f"summary failed: {e}")
-    finally:
-        _busy.discard(sid)
-    if not ok:
-        return {"compacted": False, "reason": "Nothing to compact yet: the history is too short to summarize."}
-    return {"compacted": True, "before": before, "after": agent._chars(s["messages"]) // 4}
+    _compact_jobs[sid] = {"state": "running"}
+    threading.Thread(target=_run_compact, args=(sid, s), daemon=True).start()
+    return {"started": True}
+
+
+@app.get("/api/sessions/{sid}/compact")
+def compact_status(sid: str):
+    _get(sid)
+    return _compact_jobs.get(sid) or {"state": "idle"}
 
 
 @app.post("/api/sessions/{sid}/queue")
