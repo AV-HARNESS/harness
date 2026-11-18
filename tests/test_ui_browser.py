@@ -223,3 +223,22 @@ def test_title_click_opens_session_menu_with_pin_and_archive(app):
         page.click(".mvmenu [data-a=arc]")
         page.wait_for_selector(".arcbtn:text('Archived (1)')")
         browser.close()
+
+
+@covers("R-UI-10")
+def test_compact_button_glows_when_prompt_is_big(app):
+    base, model, projects, api = app
+    (p0, s0), _ = projects
+    with playwright.sync_playwright() as pw:
+        browser = pw.chromium.launch(executable_path=CHROME, args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 1100, "height": 700})
+        page.goto(f"{base}/#p={p0['id']}&s={s0['id']}")
+        page.wait_for_selector("#list .s")
+        page.wait_for_function("typeof cfg !== 'undefined' && cfg")
+        page.evaluate("setTok(10000)")
+        assert page.locator("#compact.nudge").count() == 0
+        page.evaluate("setTok(45000)")
+        assert page.locator("#compact.nudge").count() == 1
+        page.evaluate("setTok(0)")
+        assert page.locator("#compact.nudge").count() == 0
+        browser.close()

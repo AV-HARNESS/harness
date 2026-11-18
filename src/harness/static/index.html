@@ -216,6 +216,8 @@
   .mvmenu { min-width:200px; max-height:50vh; overflow:auto; } .mvmenu button { display:flex; align-items:center; gap:8px; padding:7px 11px; width:100%; text-align:left; } .mvmenu button .i { width:14px; height:14px; } .mvmenu b { font-weight:500; flex:1; overflow:hidden; text-overflow:ellipsis; } .mvmenu hr { border:none; border-top:1px solid var(--line); margin:6px 0; } .mvmenu .mh { display:block; padding:4px 11px; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:var(--mute); } .mvmenu .danger:hover { color:var(--accent); }
   .sec button { width:26px; height:26px; padding:0; display:grid; place-items:center; border-radius:8px; }
   .sec button .i { width:16px; height:16px; }
+  #compact.nudge { border-color:var(--accent); color:var(--accent); position:relative; } #compact.nudge::after { content:''; position:absolute; top:-3px; right:-3px; width:8px; height:8px; border-radius:50%; background:var(--accent); animation:nudge 1.6s ease-in-out infinite; }
+  @keyframes nudge { 50% { transform:scale(1.5); opacity:.5; } }
   #tok.warn { color:var(--accent); font-weight:600; }
 </style>
 </head>
@@ -403,6 +405,9 @@ function render(m, i) {
 function setTok(n) {
   const t = $('tok'); t.textContent = n ? `${(n/1000).toFixed(1)}k ctx` : '';
   const at = cfg && cfg.compact_at; t.title = at ? `Prompt size sent with every step. Compacts above ${Math.round(at/1000)}k (HARNESS_COMPACT_AT).` : 'Prompt size sent with every step';
+  const hint = cfg && cfg.compact_hint_at, c = $('compact');  // a gentle nudge to compact before the prompt gets slow
+  const nudge = !!(hint && n > hint); c.classList.toggle('nudge', nudge);
+  c.title = nudge ? `Prompt is ${(n/1000).toFixed(0)}k tokens: every step re-sends it, so steps get slower. Click to summarize older context.` : 'Summarize older context';
   t.classList.toggle('warn', !!(at && n > at * 1.5));  // way past the limit: compaction is not happening
 }
 
