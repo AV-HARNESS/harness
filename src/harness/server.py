@@ -78,7 +78,7 @@ def get_config():
     return {"models": {k: f"{v.get('provider', 'gemini')}:{v['model']}" for k, v in ok.items()},
             "hidden_models": hidden, "default_model": default, "project": config.PROJECT,
             "location": config.LOCATION, "logged_in": auth.is_logged_in(),
-            "has_api_key": has_api_key, "compact_at": config.COMPACT_AT}
+            "has_api_key": has_api_key, "compact_at": config.COMPACT_AT, "compact_hint_at": config.COMPACT_HINT_AT}
 
 
 @app.get("/api/log", response_class=PlainTextResponse)
