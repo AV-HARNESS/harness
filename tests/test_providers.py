@@ -446,19 +446,39 @@ def test_gemini_cache_use_failure_retries_with_the_full_request(fake, model, mon
     assert "cachedContent" not in full and full["systemInstruction"] and len(full["contents"]) == 5
 
 
+def _cands(fake, *where):
+    out = []
+    for w in where:
+        for v in ("v1beta1", "v1"):
+            root = f"{fake.url}/{v}/projects/p/locations/{w}"
+            out.append({"label": f"{v} {w}", "create_url": f"{root}/cachedContents", "model_ref": f"projects/p/locations/{w}/publishers/google/models/m",
+                        "call_url": f"{root}/publishers/google/models/m:generateContent"})
+    return out
+
+
 @covers("R-PROV-15")
 def test_gemini_cache_tries_the_other_api_version_on_404_and_remembers_it(fake, monkeypatch):
     from harness.providers import gcache
     monkeypatch.setattr(config, "GEMINI_CACHE_MIN", 50)
-    urls = [fake.url + "/v1beta1/projects/p/locations/l/cachedContents", fake.url + "/v1/projects/p/locations/l/cachedContents"]
+    cands = _cands(fake, "l")
     fake.push((404, "<html><title>Error 404</title></html>", "text/html"), (200, {"name": "projects/p/locations/l/cachedContents/9"}))
-    plan = gcache.prepare(urls, "m", {}, "SYS", DECL, _hist(2))
-    assert plan[0].endswith("/9") and plan[2] == urls[1]
+    plan = gcache.prepare(cands, {}, "SYS", DECL, _hist(2))
+    assert plan[0].endswith("/9") and plan[2] == cands[1]
     assert [r["path"] for r in fake.requests] == ["/v1beta1/projects/p/locations/l/cachedContents", "/v1/projects/p/locations/l/cachedContents"]
-    gcache._CACHES.clear()  # next cache goes straight to the address that worked
+    gcache._CACHES.clear()  # next cache goes straight to the mode that worked
     fake.push((200, {"name": "projects/p/locations/l/cachedContents/10"}))
-    gcache.prepare(urls, "m", {}, "SYS", DECL, _hist(2))
+    gcache.prepare(cands, {}, "SYS", DECL, _hist(2))
     assert fake.requests[2]["path"].startswith("/v1/")
+
+
+@covers("R-PROV-15")
+def test_gemini_cache_falls_through_locations(fake, monkeypatch):
+    from harness.providers import gcache
+    monkeypatch.setattr(config, "GEMINI_CACHE_MIN", 50)
+    cands = _cands(fake, "us", "global")
+    fake.push((404, "nf"), (404, "nf"), (200, {"name": "projects/p/locations/global/cachedContents/7"}))
+    plan = gcache.prepare(cands, {}, "SYS", DECL, _hist(2))
+    assert plan[2]["label"] == "v1beta1 global" and "/locations/global/" in plan[2]["call_url"]
 
 
 @covers("R-PROV-15")
@@ -467,5 +487,31 @@ def test_gemini_cache_failure_log_has_no_html(fake, monkeypatch, caplog):
     monkeypatch.setattr(config, "GEMINI_CACHE_MIN", 50)
     fake.push((404, "<!DOCTYPE html><html lang=en><title>Error 404 (Not Found)!!1</title></html>", "text/html"))
     with caplog.at_level("WARNING"):
-        assert gcache.prepare(fake.url + "/x/cachedContents", "m", {}, "SYS", DECL, _hist(2)) is None
+        assert gcache.prepare(_cands(fake, "l")[:1], {}, "SYS", DECL, _hist(2)) is None
     assert "<" not in caplog.text and "404" in caplog.text
+
+
+@covers("R-PROV-15")
+def test_gemini_cache_cmek_key_is_sent_and_hint_given(fake, monkeypatch, caplog):
+    from harness.providers import gcache
+    monkeypatch.setattr(config, "GEMINI_CACHE_MIN", 50)
+    fake.push((400, {"error": "constraints/gcp.restrictNonCmekServices violated"}))
+    with caplog.at_level("WARNING"):
+        assert gcache.prepare(_cands(fake, "l")[:1], {}, "SYS", DECL, _hist(2)) is None
+    assert "HARNESS_GEMINI_CACHE_KMS_KEY" in caplog.text
+    gcache._OFF.clear()
+    monkeypatch.setattr(config, "GEMINI_CACHE_KMS_KEY", "projects/p/locations/l/keyRings/r/cryptoKeys/k")
+    fake.push((200, {"name": "cachedContents/1"}))
+    gcache.prepare(_cands(fake, "l")[:1], {}, "SYS", DECL, _hist(2))
+    assert fake.requests[-1]["body"]["encryptionSpec"]["kmsKeyName"].endswith("cryptoKeys/k")
+
+
+@covers("R-PROV-15")
+def test_gemini_cache_builds_in_background_without_delaying_the_step(fake, monkeypatch):
+    from harness.providers import gcache
+    monkeypatch.setattr(config, "GEMINI_CACHE_MIN", 50)
+    monkeypatch.setattr(config, "GEMINI_CACHE_ASYNC", True)
+    fake.push((200, {"name": "cachedContents/bg"}))
+    assert gcache.prepare(_cands(fake, "l")[:1], {}, "SYS", DECL, _hist(2)) is None  # this step goes out uncached
+    gcache.wait()
+    assert gcache.prepare(_cands(fake, "l")[:1], {}, "SYS", DECL, _hist(2) + _hist(1)[:1])[0].endswith("/bg")

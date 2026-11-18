@@ -33,6 +33,34 @@ def thinking_config(spec: dict) -> dict | None:
     return {"thinkingBudget": {"low": 1024, "medium": 8192, "high": -1}[effort]}  # 2.5: token budget, -1 = dynamic
 
 
+def cache_modes(spec: dict, project: str, loc: str, host: str) -> list:
+    """Every address a context cache might live at on this Vertex setup: API version x location. A cache and the calls
+    that use it must share a location, so each mode carries the matching generateContent address."""
+    out = []
+    for where in dict.fromkeys([loc, "global", "us-central1"]):
+        h = host if (spec.get("base_url") or config.HOST) else (
+            "https://aiplatform.googleapis.com" if where == "global" else f"https://{where}-aiplatform.googleapis.com")
+        for ver in ("v1beta1", "v1"):
+            root = f"{h.rstrip('/')}/{ver}/projects/{project}/locations/{where}"
+            out.append({"label": f"{ver} {where}", "create_url": f"{root}/cachedContents",
+                        "model_ref": f"projects/{project}/locations/{where}/publishers/google/models/{spec['model']}",
+                        "call_url": f"{root}/publishers/google/models/{spec['model']}:generateContent"})
+    return out
+
+
+def cache_endpoint(spec: dict):
+    """(candidate modes, headers) for the cache probe, built exactly as generate() builds them."""
+    if gemini_mode(spec) == "api_key":
+        base = spec.get("base_url", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
+        return ([{"label": "api-key", "create_url": f"{base}/cachedContents", "model_ref": f"models/{spec['model']}",
+                  "call_url": f"{base}/models/{spec['model']}:generateContent"}], {"x-goog-api-key": _key(spec), **spec.get("headers", {})})
+    project = spec.get("project") or config.PROJECT
+    loc = spec.get("location") or config.MODEL_LOCATIONS.get(spec["model"]) or config.LOCATION
+    host = spec.get("base_url") or config.HOST or (
+        "https://aiplatform.googleapis.com" if loc == "global" else f"https://{loc}-aiplatform.googleapis.com")
+    return cache_modes(spec, project, loc, host), {"Authorization": f"Bearer {auth.get_access_token()}", **spec.get("headers", {})}
+
+
 def generate(spec: dict, contents: list, system: str, tools, retries: int, on_text=None) -> tuple[dict, dict, dict]:
     body: dict = {"contents": contents}
     if system:
@@ -50,7 +78,7 @@ def generate(spec: dict, contents: list, system: str, tools, retries: int, on_te
         base = spec.get("base_url", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
         url = f"{base}/models/{spec['model']}:generateContent"
         headers = {"x-goog-api-key": key, **spec.get("headers", {})}
-        cache_url, model_ref = f"{base}/cachedContents", f"models/{spec['model']}"
+        cands = [{"label": "api-key", "create_url": f"{base}/cachedContents", "model_ref": f"models/{spec['model']}", "call_url": url}]
     else:
         project = spec.get("project") or config.PROJECT
         if not project:
@@ -62,8 +90,7 @@ def generate(spec: dict, contents: list, system: str, tools, retries: int, on_te
         url = (f"{host.rstrip('/')}/v1/projects/{project}/locations/{loc}"
                f"/publishers/google/models/{spec['model']}:generateContent")
         headers = {"Authorization": f"Bearer {auth.get_access_token()}", **spec.get("headers", {})}
-        cache_url = [f"{host.rstrip('/')}/{v}/projects/{project}/locations/{loc}/cachedContents" for v in ("v1beta1", "v1")]
-        model_ref = f"projects/{project}/locations/{loc}/publishers/google/models/{spec['model']}"
+        cands = cache_modes(spec, project, loc, host)
 
     def fetch(b, url=url):
         def streamed(cb):
@@ -90,18 +117,17 @@ def generate(spec: dict, contents: list, system: str, tools, retries: int, on_te
 
         return _with_stream_fallback(url, on_text, streamed, lambda: _post(url, headers, b, retries))
 
-    plan = gcache.prepare(cache_url, model_ref, headers, system, tools, contents)
+    plan = gcache.prepare(cands, headers, system, tools, contents)
     if plan:
         no_stream_before = url in _NO_STREAM
         try:
-            call_url = url.replace("/v1/", "/v1beta1/", 1) if "/v1beta1/" in plan[2] else url  # same API version as the cache
-            data = fetch(gcache.request_body(body, contents, *plan), call_url)
+            data = fetch(gcache.request_body(body, contents, plan[0], plan[1]), plan[2]["call_url"])  # same mode as the cache
         except RuntimeError as e:
             if not str(e).startswith("HTTP 4") or str(e).startswith("HTTP 429"):
                 raise
             if not no_stream_before:
                 _NO_STREAM.discard(url)  # the cache was at fault, not streaming
-            gcache.disable(cache_url if isinstance(cache_url, str) else cache_url[0], f"use failed: {e}")  # e.g. cache expired or not allowed: send the full request
+            gcache.disable(cands[0]["create_url"], f"use failed: {e}")  # e.g. cache expired or not allowed: send the full request
             data = fetch(body)
     else:
         data = fetch(body)

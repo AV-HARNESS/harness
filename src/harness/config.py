@@ -111,6 +111,8 @@ KEEP_TURNS = int(os.environ.get("HARNESS_KEEP_TURNS", "6"))            # full tu
 GEMINI_CACHE = os.environ.get("HARNESS_GEMINI_CACHE", "1") != "0"      # Gemini explicit context cache for big prompts
 GEMINI_CACHE_MIN = int(os.environ.get("HARNESS_GEMINI_CACHE_MIN", "12000"))      # est. tokens before a cache is worth creating
 GEMINI_CACHE_REFRESH = int(os.environ.get("HARNESS_GEMINI_CACHE_REFRESH", "6000"))  # new uncached tokens that trigger a new cache
+GEMINI_CACHE_ASYNC = os.environ.get("HARNESS_GEMINI_CACHE_ASYNC", "1") != "0"  # build caches in the background
+GEMINI_CACHE_KMS_KEY = os.environ.get("HARNESS_GEMINI_CACHE_KMS_KEY", "")  # only if your org requires CMEK for cached content
 GEMINI_CACHE_TTL = int(os.environ.get("HARNESS_GEMINI_CACHE_TTL", "900"))        # seconds a cache lives
 CACHE = os.environ.get("HARNESS_CACHE", "1") != "0"  # mark the stable prompt prefix for provider-side caching (Anthropic)
 STUB_BATCH = 6  # stub old results in batches so the cached prefix only changes every few steps
