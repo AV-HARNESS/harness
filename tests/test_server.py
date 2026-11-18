@@ -65,7 +65,7 @@ def test_session_api(client, project):
     assert client.get("/api/sessions/zzzzzz").status_code == 404
     assert client.get("/api/sessions?project=ghost").status_code == 404
     assert client.post("/api/sessions", json={"project": "ghost"}).status_code == 404
-    assert client.post(f"/api/sessions/{s['id']}/compact").json()["compacted"] is False
+    assert _compact(client, s["id"])["compacted"] is False
     assert client.post("/api/sessions/nope/stop").json() == {"ok": True}
     client.delete(f"/api/sessions/{s['id']}")
     assert client.get(f"/api/sessions/{s['id']}").status_code == 404
@@ -411,20 +411,42 @@ def test_patch_moves_session_to_another_project(client, session):
         server._busy.discard(sid)
 
 
+def _compact(client, sid):
+    import time
+    assert client.post(f"/api/sessions/{sid}/compact").json() == {"started": True}
+    for _ in range(100):
+        r = client.get(f"/api/sessions/{sid}/compact").json()
+        if r["state"] != "running":
+            return r
+        time.sleep(0.05)
+    raise AssertionError("compaction never finished")
+
+
 @covers("R-SRV-18")
 def test_compact_endpoint_reports_outcome_and_errors(client, session, monkeypatch):
     sid = session["id"]
-    r = client.post(f"/api/sessions/{sid}/compact").json()
+    r = _compact(client, sid)
     assert r["compacted"] is False and "too short" in r["reason"]
     monkeypatch.setattr(server.agent, "compact", lambda s, emit=None: True)
-    r = client.post(f"/api/sessions/{sid}/compact").json()
+    r = _compact(client, sid)
     assert r["compacted"] is True and {"before", "after"} <= set(r)
     def boom(s, emit=None):
         raise RuntimeError("HTTP 500 from gateway")
     monkeypatch.setattr(server.agent, "compact", boom)
-    resp = client.post(f"/api/sessions/{sid}/compact")
-    assert resp.status_code == 500 and "gateway" in resp.json()["detail"]
+    r = _compact(client, sid)
+    assert r["state"] == "error" and "gateway" in r["error"]
     assert sid not in server._busy  # not left stuck after a failure
+
+
+@covers("R-SRV-18")
+def test_compact_returns_at_once_and_blocks_chat_while_running(client, session, monkeypatch):
+    import threading
+    sid, go = session["id"], threading.Event()
+    monkeypatch.setattr(server.agent, "compact", lambda s, emit=None: go.wait(5) or True)
+    assert client.post(f"/api/sessions/{sid}/compact").json() == {"started": True}  # did not wait for the summary
+    assert client.get(f"/api/sessions/{sid}/compact").json() == {"state": "running"}
+    assert client.post(f"/api/sessions/{sid}/compact").status_code == 409
+    go.set()
 
 
 @covers("R-UI-09")

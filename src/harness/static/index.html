@@ -602,14 +602,23 @@ function drawModelMenu() {
 $('modelbtn').onclick = e => { e.stopPropagation(); if ($('mpmenu').hidden) drawModelMenu(); $('mpmenu').hidden = !$('mpmenu').hidden; $('modelbtn').setAttribute('aria-expanded', !$('mpmenu').hidden); };
 setEffort('');
 $('model').onchange = async () => { syncModelBtn(); if (cur) await api('PATCH', '/api/sessions/' + cur.id, {model: $('model').value}); loadList(); };
-$('compact').onclick = async () => {  // summarizing a big history takes a while, so show it is working and report the outcome
+$('compact').onclick = async () => {  // summarizing a big history takes minutes: the server works in the background and we poll
   const b = $('compact'); if (!cur || b.disabled) return;
-  const label = b.textContent; b.disabled = true; b.textContent = 'Compacting\u2026';
+  const label = b.textContent, sid = cur.id; b.disabled = true; b.textContent = 'Compacting\u2026';
+  const say = t => { if (cur && cur.id === sid) add('sys', t); };
   try {
-    const r = await api('POST', `/api/sessions/${cur.id}/compact`);
-    if (r.compacted) { await open(cur.id); add('sys', `Context compacted: about ${Math.round(r.before / 1000)}k \u2192 ${Math.round(r.after / 1000)}k tokens of history.`); }
-    else add('sys', r.reason || 'Nothing to compact yet.');
-  } catch (e) { add('sys', 'Compact failed: ' + (e.message || e)); }
+    await api('POST', `/api/sessions/${sid}/compact`);
+    let r, miss = 0;
+    for (;;) {
+      await new Promise(ok => setTimeout(ok, 2000));
+      try { r = await api('GET', `/api/sessions/${sid}/compact`); miss = 0; }
+      catch (e) { if (++miss >= 5) throw new Error('lost contact with the harness server (is it still running?)'); continue; }
+      if (r.state !== 'running') break;
+    }
+    if (r.state === 'error') say('Compact failed: ' + r.error);
+    else if (r.compacted) { if (cur && cur.id === sid) { await open(sid); } say(`Context compacted: about ${Math.round(r.before / 1000)}k \u2192 ${Math.round(r.after / 1000)}k tokens of history.`); }
+    else say(r.reason || 'Nothing to compact yet.');
+  } catch (e) { say('Compact failed: ' + (e.message || e)); }
   finally { b.disabled = false; b.textContent = label; }
 };
 async function loadBlocks() {
