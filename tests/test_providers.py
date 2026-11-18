@@ -515,3 +515,14 @@ def test_gemini_cache_builds_in_background_without_delaying_the_step(fake, monke
     assert gcache.prepare(_cands(fake, "l")[:1], {}, "SYS", DECL, _hist(2)) is None  # this step goes out uncached
     gcache.wait()
     assert gcache.prepare(_cands(fake, "l")[:1], {}, "SYS", DECL, _hist(2) + _hist(1)[:1])[0].endswith("/bg")
+
+
+@covers("R-PROV-15")
+def test_gemini_cache_is_off_on_vertex_unless_asked_but_on_for_api_key(fake, monkeypatch):
+    from harness.providers import gcache
+    monkeypatch.setattr(config, "GEMINI_CACHE_MIN", 50)
+    monkeypatch.setattr(config, "GEMINI_CACHE_VERTEX", False)
+    assert gcache.prepare(_cands(fake, "l"), {}, "SYS", DECL, _hist(2)) is None and fake.requests == []
+    key = [{"label": "api-key", "create_url": fake.url + "/cachedContents", "model_ref": "models/m", "call_url": fake.url + "/x"}]
+    fake.push((200, {"name": "cachedContents/k"}))
+    assert gcache.prepare(key, {}, "SYS", DECL, _hist(2))[0].endswith("/k")

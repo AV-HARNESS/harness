@@ -58,6 +58,7 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(errors, "_log", None)
     from harness.providers import gcache
     monkeypatch.setattr(config, "GEMINI_CACHE_ASYNC", False, raising=False)
+    monkeypatch.setattr(config, "GEMINI_CACHE_VERTEX", True, raising=False)  # tests use Vertex-shaped fakes
     monkeypatch.setattr(config, "GEMINI_CACHE_KMS_KEY", "", raising=False)
     gcache._CACHES.clear(); gcache._OFF.clear(); gcache._GOOD.clear()
     monkeypatch.setattr(gcache, "_delete", lambda *a, **k: None)

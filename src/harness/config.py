@@ -108,7 +108,8 @@ WORKDIR = Path(os.environ.get("HARNESS_WORKDIR", os.getcwd())).resolve()  # defa
 MAX_STEPS = int(os.environ.get("HARNESS_MAX_STEPS", "200"))
 COMPACT_AT = int(os.environ.get("HARNESS_COMPACT_AT", "50000"))        # compact when prompt exceeds this (lower = faster steps)
 KEEP_TURNS = int(os.environ.get("HARNESS_KEEP_TURNS", "6"))            # full turns to keep after compaction
-GEMINI_CACHE = os.environ.get("HARNESS_GEMINI_CACHE", "1") != "0"      # Gemini explicit context cache for big prompts
+GEMINI_CACHE = os.environ.get("HARNESS_GEMINI_CACHE", "") != "0"      # Gemini explicit context cache for big prompts (0 = never)
+GEMINI_CACHE_VERTEX = os.environ.get("HARNESS_GEMINI_CACHE", "") == "1"  # on Vertex it must be asked for: orgs often block it (CMEK policy)
 GEMINI_CACHE_MIN = int(os.environ.get("HARNESS_GEMINI_CACHE_MIN", "12000"))      # est. tokens before a cache is worth creating
 GEMINI_CACHE_REFRESH = int(os.environ.get("HARNESS_GEMINI_CACHE_REFRESH", "6000"))  # new uncached tokens that trigger a new cache
 GEMINI_CACHE_ASYNC = os.environ.get("HARNESS_GEMINI_CACHE_ASYNC", "1") != "0"  # build caches in the background
