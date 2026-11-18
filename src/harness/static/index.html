@@ -112,7 +112,9 @@
   /* ---------- main ---------- */
   main { flex:1; display:flex; flex-direction:column; min-width:0; }
   header { display:flex; align-items:center; gap:10px; padding:12px 22px; border-bottom:1px solid var(--line); }
-  header input { flex:1; background:transparent; border:none; color:inherit; font-weight:650; font-size:16px; outline:none; letter-spacing:-.01em; }
+  header input { flex:1; cursor:pointer; text-overflow:ellipsis; } header input:not([readonly]) { cursor:text; }
+  header input { background:transparent; border:none; color:inherit; font-weight:650; font-size:16px; outline:none; letter-spacing:-.01em; }
+  .arcbtn { display:block; width:100%; text-align:left; background:none; border:none; color:var(--mute); font-size:12px; padding:8px 12px; cursor:pointer; } .arcbtn:hover { color:inherit; }
   #tok { color:var(--mute); font-size:12px; white-space:nowrap; background:var(--panel); padding:3px 9px; border-radius:20px; } #tok:empty { display:none; }
   #log { flex:1; overflow:auto; padding:24px 0; scrollbar-gutter:stable both-edges; }  /* a visible scrollbar must not push the chat off-centre from the input box */
   .col { max-width:1080px; margin:0 auto; padding:0 28px; }
@@ -224,6 +226,8 @@
 <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
 <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/></symbol>
 <symbol id="i-stop" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24"><path d="M9 4h6l-1 6 3 3H7l3-3-1-6ZM12 13v7"/></symbol>
+<symbol id="i-box" viewBox="0 0 24 24"><path d="M4 7h16v3H4zM5.5 10v8a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5v-8M10 14h4"/></symbol>
 <symbol id="i-chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
 <symbol id="i-left" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
 <symbol id="i-right" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
@@ -253,7 +257,7 @@
 <main>
   <header>
     <button id="sidebtn" class="ghostb" title="Show sidebar" hidden><svg class="i " viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></button>
-    <input id="title" placeholder="Session title">
+    <input id="title" placeholder="Session title" readonly title="Click for rename, pin, move, archive, delete"><button id="tmenu" class="ghostb" title="Session menu"><svg class="i "><use href="#i-chev"/></svg></button>
     <button id="compact" title="Summarize older context">Compact</button>
     <span id="tok"></span>
   </header>
@@ -402,15 +406,22 @@ function setTok(n) {
   t.classList.toggle('warn', !!(at && n > at * 1.5));  // way past the limit: compaction is not happening
 }
 
-function sessionMenu(btn, s, rename) {  // the ... menu of a session: rename, move to another project, delete
+function sessionMenu(btn, s, rename) {  // the ... menu of a session: rename, pin, move to another project, archive, delete
   document.querySelectorAll('.mvmenu').forEach(m => m.remove());
   const m = document.createElement('div'); m.className = 'menu mvmenu';
   const others = projects.filter(p => p.id !== s.project);
   m.innerHTML = `<button data-a="ren">${SVG('pen')}<b>Rename</b></button>`
+    + (s.archived ? '' : `<button data-a="pin">${SVG('pin')}<b>${s.pinned ? 'Unpin' : 'Pin'}</b></button>`)
     + (others.length ? '<hr><span class="mh">Move to project</span>' + others.map(p => `<button data-p="${esc(p.id)}">${SVG('folder')}<b>${esc(p.name)}</b></button>`).join('') : '')
-    + `<hr><button data-a="del" class="danger">${SVG('x')}<b>Delete</b></button>`;
+    + `<hr><button data-a="arc">${SVG('box')}<b>${s.archived ? 'Unarchive' : 'Archive'}</b></button><button data-a="del" class="danger">${SVG('x')}<b>Delete</b></button>`;
   const r = btn.getBoundingClientRect(); m.style.cssText = `position:fixed;left:${Math.min(r.left, innerWidth - 240)}px;top:${r.bottom + 4}px;z-index:50;display:block;bottom:auto`;
   m.querySelector('[data-a=ren]').onclick = ev => { m.remove(); rename(ev); };
+  const flag = (sel, patch) => { const b = m.querySelector(sel); if (b) b.onclick = async ev => {
+    ev.stopPropagation(); m.remove(); await api('PATCH', '/api/sessions/' + s.id, patch);
+    if (cur && cur.id === s.id) { Object.assign(cur, patch); if (patch.archived) { cur = null; $('msgs').innerHTML = ''; $('title').value = ''; } }
+    loadList();
+  }; };
+  flag('[data-a=pin]', {pinned: !s.pinned}); flag('[data-a=arc]', {archived: !s.archived});
   m.querySelector('[data-a=del]').onclick = async ev => {
     ev.stopPropagation(); m.remove(); if (!confirm('Delete this session?')) return;
     await api('DELETE', '/api/sessions/' + s.id);
@@ -427,13 +438,15 @@ function sessionMenu(btn, s, rename) {  // the ... menu of a session: rename, mo
   setTimeout(() => document.addEventListener('click', () => m.remove(), {once: true}), 0);
 }
 
+let showArchived = false;
 async function loadList() {
-  const ss = await api('GET', '/api/sessions?project=' + proj.id);
+  const ss = await api('GET', '/api/sessions?project=' + proj.id + (showArchived ? '&archived=true' : ''));
+  const nArc = showArchived ? 0 : (await api('GET', '/api/sessions?project=' + proj.id + '&archived=true')).length;
   $('list').innerHTML = '';
-  if (!ss.length) $('list').innerHTML = '<div class="empty">No sessions yet. Start one with the + above.</div>';
+  if (!ss.length) $('list').innerHTML = `<div class="empty">${showArchived ? 'Nothing archived.' : 'No sessions yet. Start one with the + above.'}</div>`;
   let lastGroup = '';
   for (const s of ss) {
-    const g = dayGroup(s.updated);
+    const g = s.pinned ? 'Pinned' : dayGroup(s.updated);
     if (g !== lastGroup) { lastGroup = g; const h = document.createElement('div'); h.className = 'grp'; h.textContent = g; $('list').appendChild(h); }
     const d = document.createElement('div'); d.className = 's' + (cur && cur.id === s.id ? ' on' : '');
     d.title = `${s.model || ''} · ${ago(s.updated)}`;
@@ -446,6 +459,12 @@ async function loadList() {
     d.querySelector('.t').ondblclick = rename;
     d.querySelector('.sdots').onclick = e => { e.stopPropagation(); sessionMenu(e.currentTarget, s, rename); };
     $('list').appendChild(d);
+  }
+  if (nArc || showArchived) {
+    const a = document.createElement('button'); a.className = 'arcbtn';
+    a.textContent = showArchived ? '\u2190 Back to sessions' : `Archived (${nArc})`;
+    a.onclick = () => { showArchived = !showArchived; loadList(); };
+    $('list').appendChild(a);
   }
 }
 async function open(id) {
@@ -552,6 +571,12 @@ $('new').onclick = newSession;
 $('in').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } };
 $('in').oninput = e => { if (isRunning()) setSend(!e.target.value.trim());
    e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; };
+const titleRename = () => { if (!cur) return; const t = $('title'); t.readOnly = false; t.focus(); t.select(); };
+const titleMenu = () => { if (cur) sessionMenu($('tmenu'), cur, e => { e.stopPropagation(); titleRename(); }); };
+$('tmenu').onclick = e => { e.stopPropagation(); titleMenu(); };
+$('title').onclick = e => { if ($('title').readOnly) { e.stopPropagation(); titleMenu(); } };
+$('title').onblur = () => { $('title').readOnly = true; };
+$('title').onkeydown = e => { if (e.key === 'Enter') $('title').blur(); if (e.key === 'Escape') { $('title').value = cur ? cur.title : ''; $('title').blur(); } };
 $('title').onchange = async () => { if (cur) { await api('PATCH', '/api/sessions/' + cur.id, {title: $('title').value}); loadList(); } };
 $('instr').onchange = async () => { if (cur) await api('PATCH', '/api/sessions/' + cur.id, {instructions: $('instr').value}); };
 const EFFORTS = [['', 'Default', "The model's own setting"], ['low', 'Low', 'Fastest, least thinking'], ['medium', 'Medium', 'Balanced'], ['high', 'High', 'Slowest, most careful']];

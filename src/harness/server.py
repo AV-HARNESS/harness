@@ -38,6 +38,8 @@ class Patch(BaseModel):
     instructions: str | None = None
     effort: str | None = None
     project: str | None = None
+    pinned: bool | None = None
+    archived: bool | None = None
 
 
 class New(Patch):
@@ -224,9 +226,9 @@ def del_block(pid: str, name: str):
 
 
 @app.get("/api/sessions")
-def list_sessions(project: str):
+def list_sessions(project: str, archived: bool = False):
     _proj(project)
-    return store.list_all(project)
+    return store.list_all(project, archived)
 
 
 @app.post("/api/sessions")
@@ -274,6 +276,12 @@ def patch_session(sid: str, b: Patch):
         s["instructions"] = b.instructions
     if b.effort is not None:
         s["effort"] = b.effort if b.effort in ("low", "medium", "high") else ""
+    if b.pinned is not None:
+        s["pinned"] = b.pinned
+    if b.archived is not None:
+        s["archived"] = b.archived
+        if b.archived:
+            s["pinned"] = False
     store.save(s)
     return s
 
