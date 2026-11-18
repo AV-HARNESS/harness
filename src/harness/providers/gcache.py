@@ -122,6 +122,8 @@ def prepare(cands, headers: dict, system: str, tools, contents: list):
     """(cache_name, n_cached_messages, candidate) to send the request with, or None to send it normally."""
     if not config.GEMINI_CACHE or len(contents) < 3:
         return None
+    if cands[0]["label"] != "api-key" and not config.GEMINI_CACHE_VERTEX:
+        return None  # Vertex: off unless HARNESS_GEMINI_CACHE=1 (implicit caching still applies)
     endpoint = cands[0]["create_url"]  # identifies the endpoint
     if time.time() < _OFF.get(endpoint, 0):
         return None
