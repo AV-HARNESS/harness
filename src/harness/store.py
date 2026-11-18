@@ -244,14 +244,17 @@ def move(sid: str, project: str) -> dict:
     return s
 
 
-def list_all(project: str) -> list[dict]:
+def list_all(project: str, archived: bool = False) -> list[dict]:
+    """Sessions of a project, pinned first then newest. Archived ones are hidden unless asked for (then only those)."""
     out = []
     for p in (_pdir(project) / "sessions").glob("*.json"):
         try:
             s = json.loads(p.read_text(encoding="utf-8"))
         except Exception:
             continue
-        row = {k: s.get(k) for k in ("id", "project", "title", "model", "created", "updated", "prompt_tokens")}
+        if bool(s.get("archived")) != archived:
+            continue
+        row = {k: s.get(k) for k in ("id", "project", "title", "model", "created", "updated", "prompt_tokens", "pinned", "archived")}
         row["title"] = title_case(row["title"] or "") if row["title"] != "New session" else row["title"]
         out.append(row)
-    return sorted(out, key=lambda x: x["updated"] or 0, reverse=True)
+    return sorted(out, key=lambda x: (bool(x["pinned"]), x["updated"] or 0), reverse=True)

@@ -202,3 +202,24 @@ def test_session_dots_menu_has_rename_move_delete_and_move_works(app):
         page.click(f"#plist .pr[data-id='{p1['id']}']")
         page.wait_for_function(f"document.querySelectorAll('#list .s').length >= 2")
         browser.close()
+
+
+@covers("R-UI-09")
+def test_title_click_opens_session_menu_with_pin_and_archive(app):
+    base, model, projects, api = app
+    (p0, s0), _ = projects
+    with playwright.sync_playwright() as pw:
+        browser = pw.chromium.launch(executable_path=CHROME, args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 1100, "height": 700})
+        page.goto(f"{base}/#p={p0['id']}&s={s0['id']}")
+        page.wait_for_selector("#list .s")
+        page.wait_for_function("document.getElementById('title').value !== ''")
+        page.click("#title")
+        for a in ("ren", "pin", "arc", "del"):
+            assert page.locator(f".mvmenu [data-a={a}]").count() == 1
+        page.click(".mvmenu [data-a=pin]")
+        page.wait_for_selector("#list .grp:text('Pinned')")
+        page.click("#tmenu")
+        page.click(".mvmenu [data-a=arc]")
+        page.wait_for_selector(".arcbtn:text('Archived (1)')")
+        browser.close()

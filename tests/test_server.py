@@ -425,3 +425,18 @@ def test_compact_endpoint_reports_outcome_and_errors(client, session, monkeypatc
     resp = client.post(f"/api/sessions/{sid}/compact")
     assert resp.status_code == 500 and "gateway" in resp.json()["detail"]
     assert sid not in server._busy  # not left stuck after a failure
+
+
+@covers("R-UI-09")
+def test_pin_and_archive_sessions(client, session):
+    sid, pid = session["id"], session["project"]
+    other = client.post("/api/sessions", json={"project": pid, "title": "Other"}).json()["id"]
+    client.patch(f"/api/sessions/{sid}", json={"pinned": True})
+    client.patch(f"/api/sessions/{other}", json={"title": "Newer"})  # newer, but not pinned
+    assert [x["id"] for x in client.get(f"/api/sessions?project={pid}").json()][0] == sid
+    client.patch(f"/api/sessions/{sid}", json={"archived": True})
+    assert sid not in [x["id"] for x in client.get(f"/api/sessions?project={pid}").json()]
+    arc = client.get(f"/api/sessions?project={pid}&archived=true").json()
+    assert [x["id"] for x in arc] == [sid] and not arc[0]["pinned"]  # archiving unpins
+    client.patch(f"/api/sessions/{sid}", json={"archived": False})
+    assert sid in [x["id"] for x in client.get(f"/api/sessions?project={pid}").json()]
