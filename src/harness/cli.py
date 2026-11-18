@@ -156,6 +156,8 @@ def main() -> None:
     lg.add_argument("--port", type=int, default=0, help="fixed local port (needed if your OAuth client is a Web client with registered redirect URIs)")
     vf = sub.add_parser("verify", help="live check of auth, each model, and tool calling")
     vf.add_argument("aliases", nargs="*", help="model aliases (default: all configured)")
+    vc = sub.add_parser("verify-cache", help="try every context-cache mode against your gateway and print what each answers")
+    vc.add_argument("aliases", nargs="*", help="model aliases (default: all Gemini models)")
     c = sub.add_parser("chat", help="terminal chat (default)")
     c.add_argument("--resume", help="session id")
     c.add_argument("--project", help="project id or name")
@@ -170,6 +172,14 @@ def main() -> None:
     elif a.cmd == "verify":
         from .verify import main as verify_main
         raise SystemExit(verify_main(a.aliases))
+    elif a.cmd == "verify-cache":
+        from .providers import gcache, gemini
+        for alias in a.aliases or [k for k, s in config.MODELS.items() if s.get("provider", "gemini") == "gemini"]:
+            spec = {**config.MODELS[alias]}
+            print(f"{alias} ({spec.get('model')}):")
+            cands, headers = gemini.cache_endpoint(spec)
+            ok = gcache.probe(cands, headers)
+            print("  RESULT: caching works" if ok else "  RESULT: no mode worked (see the lines above)")
     elif a.cmd == "serve":
         from .server import serve
         serve(a.port)
