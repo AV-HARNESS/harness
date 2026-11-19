@@ -280,3 +280,20 @@ def test_long_session_bar_shows_above_threshold(app):
         page.click("#lb-x")
         assert page.locator("#longbar:visible").count() == 0
         browser.close()
+
+
+@covers("R-UI-14")
+def test_running_tool_group_shows_live_timer(app):
+    base, model, projects, api = app
+    (p0, s0), _ = projects
+    with playwright.sync_playwright() as pw:
+        browser = pw.chromium.launch(executable_path=CHROME, args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 1100, "height": 700})
+        page.goto(f"{base}/#p={p0['id']}&s={s0['id']}")
+        page.wait_for_selector("#list .s")
+        page.evaluate("toolCall('bash', {command: 'sleep 9'})")
+        assert "Running a command" in page.inner_text("#msgs .steps .lbl")
+        page.wait_for_function("document.querySelector('#msgs .steps .gt').textContent.trim().endsWith('s')", timeout=5000)
+        page.evaluate("toolResult('exit=0')")
+        assert "Running" not in page.inner_text("#msgs .steps .lbl")
+        browser.close()

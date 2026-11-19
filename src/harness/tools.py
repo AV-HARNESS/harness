@@ -49,6 +49,7 @@ def _guard(p: Path, writing: str = "") -> str | None:
 
 
 def bash(command: str, timeout: int = 120) -> str:
+    timeout = max(1, min(int(timeout or 120), config.TOOL_TIMEOUT))
     try:
         r = subprocess.run(command, shell=True, cwd=_root(), capture_output=True,
                            text=True, encoding="utf-8", errors="replace", timeout=timeout)

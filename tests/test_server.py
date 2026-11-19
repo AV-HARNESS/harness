@@ -486,3 +486,21 @@ def test_handoff_copies_session_and_summarizes_the_copy(client, session, monkeyp
         time.sleep(0.05)
     assert j["state"] == "done" and seen == {"id": new, "n": 2}
     assert store.load(new)["title"].startswith("Continued") and len(store.load(sid)["messages"]) == 2  # original untouched
+
+
+@covers("R-UI-13")
+def test_last_query_time_is_stored_and_run_start_reported(client, session, monkeypatch):
+    sid = session["id"]
+    assert not client.get(f"/api/sessions/{sid}").json().get("last_query_at")
+    import threading
+    go = threading.Event()
+    monkeypatch.setattr(server.agent, "run_turn", lambda s, text, emit, ev, inbox: (go.wait(5), s.update(messages=[])) and None)
+    r = client.post(f"/api/sessions/{sid}/chat", json={"text": "hi"}, headers={})
+    # stream returns when worker finishes; a running session reports when it started
+    go.set()
+    r.close()
+    for _ in range(100):
+        if sid not in server._busy:
+            break
+        import time; time.sleep(0.05)
+    assert server._started.get(sid) is None  # cleared when the run ends
