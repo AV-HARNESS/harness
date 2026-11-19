@@ -435,3 +435,32 @@ def test_bash_timeout_is_capped(monkeypatch):
     monkeypatch.setattr(config, "TOOL_TIMEOUT", 1)
     out = tools.bash("python3 -c \"import time; time.sleep(5)\"", timeout=999)
     assert out.startswith("TIMEOUT after 1s")
+
+
+@covers("R-LOOP-21")
+def test_bash_timeout_kills_child_processes_and_returns(monkeypatch):
+    import time as _t
+    monkeypatch.setattr(config, "TOOL_TIMEOUT", 1)
+    t0 = _t.time()
+    out = tools.bash("sh -c 'python3 -c \"import time; time.sleep(30)\" & wait'", timeout=1)  # a child that outlives the shell
+    assert "TIMEOUT after 1s" in out and "killed" in out and _t.time() - t0 < 10
+
+
+@covers("R-LOOP-21")
+def test_stop_kills_a_running_command(monkeypatch):
+    import threading, time as _t
+    from harness import providers
+    ev = threading.Event()
+    tok = providers.STOP.set(ev)
+    threading.Timer(0.5, ev.set).start()
+    t0 = _t.time()
+    try:
+        out = tools.bash("python3 -c \"import time; time.sleep(30)\"", timeout=120)
+    finally:
+        providers.STOP.reset(tok)
+    assert "STOPPED" in out and _t.time() - t0 < 10
+
+
+@covers("R-LOOP-21")
+def test_bash_does_not_wait_for_keyboard_input():
+    assert "exit=0" in tools.bash("python3 -c \"import sys; print(len(sys.stdin.read()))\"", timeout=20)

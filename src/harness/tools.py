@@ -1,7 +1,10 @@
 """Tools exposed to the model. No approval prompts: everything runs immediately."""
 import fnmatch
+import os
 import re
+import signal
 import subprocess
+import time
 from contextvars import ContextVar
 from html.parser import HTMLParser
 from pathlib import Path
@@ -9,6 +12,7 @@ from pathlib import Path
 import requests
 
 from . import config, llm, store
+from .providers import STOP
 
 # The active project for the running agent turn (set by agent.run_turn).
 PROJECT: ContextVar[dict | None] = ContextVar("project", default=None)
@@ -48,14 +52,47 @@ def _guard(p: Path, writing: str = "") -> str | None:
     return None
 
 
-def bash(command: str, timeout: int = 120) -> str:
-    timeout = max(1, min(int(timeout or 120), config.TOOL_TIMEOUT))
+def _kill_tree(p: subprocess.Popen) -> None:
+    """Kill the shell AND everything it started. Killing only the shell leaves a python child holding the output
+    pipe, which is what made a timed-out command hang forever on Windows."""
     try:
-        r = subprocess.run(command, shell=True, cwd=_root(), capture_output=True,
-                           text=True, encoding="utf-8", errors="replace", timeout=timeout)
-    except subprocess.TimeoutExpired as e:
-        return _clip(f"TIMEOUT after {timeout}s\n{e.stdout or ''}{e.stderr or ''}")
-    return _clip(f"exit={r.returncode}\n{r.stdout}{('[stderr]' + chr(10) + r.stderr) if r.stderr else ''}")
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture_output=True, timeout=15)
+        else:
+            os.killpg(p.pid, signal.SIGKILL)
+    except Exception:
+        pass
+    try:
+        p.kill()
+    except Exception:
+        pass
+
+
+def bash(command: str, timeout: int = 120) -> str:
+    """Run a shell command. It never waits for input, is cut after the timeout, and is killed (with its children)
+    the moment the user presses Stop."""
+    timeout = max(1, min(int(timeout or 120), config.TOOL_TIMEOUT))
+    kw = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
+    p = subprocess.Popen(command, shell=True, cwd=_root(), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", **kw)
+    stop, t0, why = STOP.get(), time.monotonic(), ""
+    while True:
+        try:
+            out, err = p.communicate(timeout=0.5)
+            break
+        except subprocess.TimeoutExpired:
+            if stop is not None and stop.is_set():
+                why = "STOPPED by the user"
+            elif time.monotonic() - t0 > timeout:
+                why = f"TIMEOUT after {timeout}s"
+            if why:
+                _kill_tree(p)
+                try:
+                    out, err = p.communicate(timeout=5)
+                except Exception:  # a grandchild still holds the pipes: give up on the output, not on the run
+                    out = err = ""
+                return _clip(f"{why}; the command and its child processes were killed.\n{out or ''}{err or ''}")
+    return _clip(f"exit={p.returncode}\n{out}{('[stderr]' + chr(10) + err) if err else ''}")
 
 
 def read_file(path: str, offset: int = 1, limit: int = 2000) -> str:
