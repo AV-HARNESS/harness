@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import config, llm, store, tools
+from .providers import STOP, CallStopped, CallTimeout
 
 BASE_SYSTEM = (
     "You are a capable autonomous assistant with shell, file and web tools. "
@@ -308,6 +309,14 @@ def _drain(inbox) -> list[str]:
 
 
 def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None, inbox=None) -> None:
+    tok = STOP.set(stop)  # Stop also cuts a model call that is in flight
+    try:
+        _run_turn(s, text, emit, stop, inbox)
+    finally:
+        STOP.reset(tok)
+
+
+def _run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None, inbox=None) -> None:
     project = store.get_project(s["project"])
     tools.PROJECT.set(project)
     tools.MODEL.set(s["model"])
@@ -336,8 +345,21 @@ def run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = None
             system = build_system(project, s)
         if s["messages"][-1]["role"] != "user":  # Gemini rejects requests ending with a model turn
             s["messages"].append({"role": "user", "parts": [{"text": "Continue."}]})
-        content, usage, _ = llm.generate(s["model"], s["messages"], system, tools.DECLARATIONS, effort=s.get("effort", ""),
-                                             on_text=lambda d: emit({"type": "text_delta", "text": d}))
+        content, tries = None, 0
+        while content is None:
+            try:
+                content, usage, _ = llm.generate(s["model"], s["messages"], system, tools.DECLARATIONS, effort=s.get("effort", ""),
+                                                 on_text=lambda d: emit({"type": "text_delta", "text": d}))
+            except CallStopped:
+                break
+            except CallTimeout as e:  # a hung call is cut and tried again, then the run stops with a clear message
+                tries += 1
+                if tries > config.CALL_RETRIES:
+                    raise
+                emit({"type": "notice", "text": f"The model call was cut after {e.secs}s. Retrying ({tries}/{config.CALL_RETRIES})."})
+        if content is None:
+            emit({"type": "text", "text": "(stopped)"})
+            break
         s["messages"].append(content)
         s["prompt_tokens"] = usage.get("promptTokenCount", 0)
         if s.pop("just_compacted", False):

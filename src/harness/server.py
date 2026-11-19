@@ -4,6 +4,7 @@ import os
 import queue
 import re
 import threading
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -18,6 +19,7 @@ STATIC = Path(__file__).parent / "static"
 _stops: dict[str, threading.Event] = {}
 errors.logger().info("compaction starts above %d prompt tokens (HARNESS_COMPACT_AT)", config.COMPACT_AT)
 _busy: set[str] = set()
+_started: dict[str, float] = {}  # session id -> when its current run began
 _inboxes: dict[str, queue.Queue] = {}
 _live: dict[str, dict] = {}  # sessions being worked on: the one in-memory copy every reader and writer shares
 
@@ -239,7 +241,7 @@ def new_session(b: New):
 
 @app.get("/api/sessions/{sid}")
 def get_session(sid: str):
-    return {**_get(sid), "running": sid in _busy}
+    return {**_get(sid), "running": sid in _busy, "run_started": _started.get(sid)}
 
 
 def _retitle(sid: str) -> None:
@@ -385,6 +387,7 @@ def chat(sid: str, b: Chat):
         s.pop("compact_base", None)
         store.save(s)
     _live[sid] = s
+    s["last_query_at"] = _started[sid] = time.time()  # shown in the header: when the last query was sent
     q: queue.Queue = queue.Queue()
     ev = _stops[sid] = threading.Event()
     inbox = _inboxes[sid] = queue.Queue()
@@ -416,6 +419,7 @@ def chat(sid: str, b: Chat):
             q.put({"type": "error", "error": msg, "ref": ref})
         finally:
             _busy.discard(sid)
+            _started.pop(sid, None)
             _live.pop(sid, None)
             left = agent._drain(inbox)  # queued but never delivered (e.g. stopped): UI sends them next
             if left:

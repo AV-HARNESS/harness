@@ -6,11 +6,60 @@ so a session can be continued with a different model.
 Shared utilities (_post, _lower_types, _text, _result_text, _declarations) live here and are imported
 by the individual provider modules. The public entry point is generate().
 """
+import contextvars
+import threading
 import time
+from contextvars import ContextVar
 
 import requests
 
 from .. import config
+
+
+class CallTimeout(RuntimeError):
+    """A model call ran longer than HARNESS_CALL_TIMEOUT and was cut."""
+    def __init__(self, secs: int):
+        super().__init__(f"model call cut after {secs}s (HARNESS_CALL_TIMEOUT)")
+        self.secs = secs
+
+
+class CallStopped(RuntimeError):
+    """The user pressed Stop while a model call was in flight."""
+
+
+STOP: ContextVar = ContextVar("stop", default=None)  # the running turn's stop Event: Stop cuts the call at once
+
+
+def _guarded(fn, *args, on_text=None, **kw):
+    """Run a model call so it can be cut: after HARNESS_CALL_TIMEOUT seconds, or at once when Stop is pressed.
+    The call itself runs in a helper thread; a cut call is abandoned (its late output is discarded)."""
+    limit, stop = config.CALL_TIMEOUT, STOP.get()
+    if not limit and stop is None:
+        return fn(*args, **({"on_text": on_text} if on_text else {}), **kw)
+    box: dict = {}
+    cut = threading.Event()
+    ctx = contextvars.copy_context()
+    cb = (lambda d: None if cut.is_set() else on_text(d)) if on_text else None
+
+    def run():
+        try:
+            box["r"] = ctx.run(lambda: fn(*args, **({"on_text": cb} if cb else {}), **kw))
+        except BaseException as e:  # handed back to the caller
+            box["e"] = e
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    deadline = time.monotonic() + limit if limit else None
+    while t.is_alive():
+        t.join(0.2)
+        if stop is not None and stop.is_set():
+            cut.set()
+            raise CallStopped("stopped")
+        if deadline and time.monotonic() > deadline:
+            cut.set()
+            raise CallTimeout(limit)
+    if "e" in box:
+        raise box["e"]
+    return box["r"]
 
 
 # ---- shared utilities used by provider modules ----
@@ -159,7 +208,7 @@ def generate(alias: str, contents: list, system: str = "", tools: list | None = 
         raise RuntimeError(f"Unknown provider '{provider}'. Use one of: gemini, openai, anthropic")
     import time
     t0 = time.monotonic()
-    content, usage, cand = fn(spec, contents, system, tools, retries, **({"on_text": on_text} if on_text and config.STREAM else {}))
+    content, usage, cand = _guarded(fn, spec, contents, system, tools, retries, on_text=on_text if on_text and config.STREAM else None)
     secs = round(time.monotonic() - t0, 1)
     usage = {**usage, "secs": secs}  # wall time of this model call, retries included
     from .. import errors

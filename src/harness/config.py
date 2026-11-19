@@ -106,6 +106,9 @@ DEFAULT_MODEL = os.environ.get("HARNESS_DEFAULT_MODEL", "flash")
 # --- agent ---
 WORKDIR = Path(os.environ.get("HARNESS_WORKDIR", os.getcwd())).resolve()  # default root for new projects
 MAX_STEPS = int(os.environ.get("HARNESS_MAX_STEPS", "200"))
+CALL_TIMEOUT = int(os.environ.get("HARNESS_CALL_TIMEOUT", "240"))  # cut a model call after this many seconds (0 = never)
+CALL_RETRIES = int(os.environ.get("HARNESS_CALL_RETRIES", "1"))  # how many times a cut call is retried before the run stops
+TOOL_TIMEOUT = int(os.environ.get("HARNESS_TOOL_TIMEOUT", "300"))  # longest a bash command may run, whatever the model asks for
 LONG_AT = int(os.environ.get("HARNESS_LONG_AT", "60000"))  # above this a bar suggests compacting or continuing in a new session (0 = never)
 COMPACT_HINT_AT = int(os.environ.get("HARNESS_COMPACT_HINT_AT", "30000"))  # the Compact button starts glowing above this (0 = never)
 COMPACT_AT = int(os.environ.get("HARNESS_COMPACT_AT", "40000"))        # compact when prompt exceeds this (lower = faster steps)

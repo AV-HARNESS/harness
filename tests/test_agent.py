@@ -388,3 +388,50 @@ def test_delegate_runs_a_separate_read_only_context_and_returns_only_its_answer(
     assert not (pathlib.Path(project["root"]) / "x").exists()               # sub-agents cannot write
     sub_tools = fake.requests[1]["body"]["tools"][0]["functionDeclarations"]
     assert "delegate" not in [d["name"] for d in sub_tools] and "write_file" not in [d["name"] for d in sub_tools]
+
+
+@covers("R-LOOP-21")
+def test_hung_model_call_is_cut_retried_and_then_fails_clearly(monkeypatch):
+    import time
+    from harness import providers
+    monkeypatch.setattr(config, "CALL_TIMEOUT", 1)
+    monkeypatch.setattr(config, "CALL_RETRIES", 1)
+    calls = []
+    def hang(spec, contents, system, tools, retries, **kw):
+        calls.append(1)
+        threading.Event().wait(3)  # time.sleep is stubbed out in tests
+        return {"role": "model", "parts": [{"text": "late"}]}, {}, {}
+    monkeypatch.setitem(config.MODELS, "slow", {"provider": "gemini", "model": "m"})
+    from harness.providers import gemini
+    monkeypatch.setattr(gemini, "generate", hang)
+    t0 = time.time()
+    with pytest.raises(providers.CallTimeout):
+        providers.generate("slow", [{"role": "user", "parts": [{"text": "x"}]}])
+    assert time.time() - t0 < 2.5  # cut at the limit, did not wait for the hung call
+
+
+@covers("R-LOOP-21")
+def test_stop_cuts_a_call_in_flight(monkeypatch):
+    import threading, time
+    from harness import providers
+    monkeypatch.setattr(config, "CALL_TIMEOUT", 60)
+    monkeypatch.setitem(config.MODELS, "slow", {"provider": "gemini", "model": "m"})
+    from harness.providers import gemini
+    monkeypatch.setattr(gemini, "generate", lambda *a, **k: (threading.Event().wait(5), ({}, {}, {}))[1])
+    ev = threading.Event()
+    tok = providers.STOP.set(ev)
+    threading.Timer(0.3, ev.set).start()
+    t0 = time.time()
+    try:
+        with pytest.raises(providers.CallStopped):
+            providers.generate("slow", [{"role": "user", "parts": [{"text": "x"}]}])
+    finally:
+        providers.STOP.reset(tok)
+    assert time.time() - t0 < 2
+
+
+@covers("R-LOOP-21")
+def test_bash_timeout_is_capped(monkeypatch):
+    monkeypatch.setattr(config, "TOOL_TIMEOUT", 1)
+    out = tools.bash("python3 -c \"import time; time.sleep(5)\"", timeout=999)
+    assert out.startswith("TIMEOUT after 1s")

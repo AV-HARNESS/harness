@@ -220,6 +220,8 @@
   @keyframes nudge { 50% { transform:scale(1.5); opacity:.5; } }
   #jump { position:absolute; top:-42px; left:50%; transform:translateX(-50%); z-index:5; border-radius:20px; padding:5px 14px; background:var(--panel); border:1px solid var(--line); cursor:pointer; box-shadow:0 2px 8px #0002; }
   #longbar { display:flex; align-items:center; gap:8px; padding:7px 22px; font-size:13px; background:var(--panel); border-top:1px solid var(--line); } #longbar[hidden] { display:none; } #longbar span { flex:1; color:var(--mute); } #longbar button { cursor:pointer; } #lb-x { border:none; background:none; font-size:16px; }
+  .steps .gt { margin-left:6px; opacity:.7; font-variant-numeric:tabular-nums; } .step .st { opacity:.6; }
+  #last { color:var(--mute); font-size:12px; white-space:nowrap; } #last[hidden] { display:none; } #last.slow { color:var(--accent); }
   #tok.warn { color:var(--accent); font-weight:600; }
 </style>
 </head>
@@ -263,7 +265,7 @@
     <button id="sidebtn" class="ghostb" title="Show sidebar" hidden><svg class="i " viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9 4v16"/></svg></button>
     <input id="title" placeholder="Session title" readonly title="Click for rename, pin, move, archive, delete"><button id="tmenu" class="ghostb" title="Session menu"><svg class="i "><use href="#i-chev"/></svg></button>
     <button id="compact" title="Summarize older context">Compact</button>
-    <span id="tok"></span>
+    <span id="last" hidden></span><span id="tok"></span>
   </header>
   <div id="log"><div class="col" id="msgs"></div></div>
   <div id="longbar" hidden><span id="longtxt"></span><button id="lb-compact">Compact</button><button id="lb-new">Continue in new session</button><button id="lb-x" title="Hide for this session">&times;</button></div>
@@ -381,22 +383,33 @@ function grpLabel() {
 function toolCall(name, args) {
   if (!grp) {
     grp = document.createElement('details'); grp.className = 'steps live'; grpCount = {};
-    grp.innerHTML = `<summary>${SVG('right')}<span class="lbl"></span></summary><div class="body"></div>`;
+    grp.innerHTML = `<summary>${SVG('right')}<span class="lbl"></span><span class="gt"></span></summary><div class="body"></div>`;
     $('msgs').appendChild(grp);
   }
-  grpCount[name] = (grpCount[name] || 0) + 1; grp.querySelector('.lbl').textContent = grpLabel();
+  grpCount[name] = (grpCount[name] || 0) + 1;
   const a = Object.values(args || {}).map(v => String(v).replace(/\s+/g, ' ').slice(0, 70))[0] || '';
   const d = document.createElement('details'); d.className = 'step';
-  d.innerHTML = `<summary>${esc(name)}  ${esc(a)}</summary><pre>${esc(JSON.stringify(args, null, 2))}</pre>`;
-  grp.querySelector('.body').appendChild(d); lastTool = d; pend.push(d);
+  d.innerHTML = `<summary>${esc(name)}  ${esc(a)}<span class="st"></span></summary><pre>${esc(JSON.stringify(args, null, 2))}</pre>`;
+  d.dataset.t0 = Date.now(); d.dataset.name = name;
+  grp.querySelector('.body').appendChild(d); lastTool = d; pend.push(d); setGrpLabel();
   const body = grp.querySelector('.body'); body.scrollTop = 1e9; toBottom();
+}
+const RUNNING = {bash: 'a command', read_file: 'a file read', read_files: 'files', search: 'a search', edit_file: 'an edit', write_file: 'a file write', web_fetch: 'a page fetch', web_search: 'a web search', delegate: 'a sub-agent'};
+function setGrpLabel() {  // while a tool runs the group says so ("Running a command 53s"); otherwise it summarizes what was done
+  if (!grp) return;
+  const d = pend[0];
+  grp.querySelector('.lbl').textContent = d ? 'Running ' + (RUNNING[d.dataset.name] || d.dataset.name) : grpLabel();
 }
 function toolResult(out) {
   const d = pend.shift() || lastTool; if (!d) return;   // results arrive in the same order as the calls
   const p = document.createElement('pre'); p.textContent = out; d.appendChild(p);
-  if (String(out).startsWith('ERROR')) d.classList.add('bad');
+  const secs = d.dataset.t0 ? (Date.now() - d.dataset.t0) / 1000 : 0, st = d.querySelector('.st');
+  if (st) st.textContent = secs >= 3 ? ' \u00b7 ' + fmtDur(secs) : '';  // keep the time of slow steps
+  if (String(out).startsWith('ERROR') || String(out).startsWith('TIMEOUT')) d.classList.add('bad');
+  setGrpLabel(); const ri = cur && runInfo[cur.id]; if (ri) ri.since = Date.now();
+  if (String(out).startsWith('TIMEOUT')) add('sys', esc(String(out).split('\n')[0]) + ' \u2014 the command was cut.');
 }
-function endSteps() { if (grp) grp.classList.remove('live'); grp = null; pend = []; }
+function endSteps() { if (grp) { grp.classList.remove('live'); setGrpLabel(); const g = grp.querySelector('.gt'); if (g) g.textContent = ''; } grp = null; pend = []; }
 function render(m, i) {
   for (const p of m.parts) {
     if (p.thought) continue;
@@ -414,6 +427,29 @@ function render(m, i) {
 }
 $('log').addEventListener('scroll', () => { const l = $('log'); atBottom = l.scrollHeight - l.scrollTop - l.clientHeight < 80; if (atBottom) $('jump').hidden = true; });
 $('jump').onclick = () => toBottom(true);
+const runInfo = {};  // session id -> {start, steps, last}: what the header shows while a run is going
+const fmtDur = s => s < 60 ? `${Math.round(s)}s` : `${Math.floor(s / 60)}m ${String(Math.round(s % 60)).padStart(2, '0')}s`;
+function tickSteps() {  // live timers: the running step inside its group, and the group header
+  if (!grp) return;
+  const g = grp.querySelector('.gt'), d = pend[0];
+  if (g) g.textContent = d ? ' ' + fmtDur((Date.now() - d.dataset.t0) / 1000) : '';
+  pend.forEach(p => { const st = p.querySelector('.st'); if (st) st.textContent = ' \u00b7 ' + fmtDur((Date.now() - p.dataset.t0) / 1000); });
+}
+function tickLast() {
+  tickSteps();  // "Last query 7:19 PM" always; while running also how long, which step and the last model call's time
+  const el = $('last'); if (!cur || !cur.last_query_at) { el.hidden = true; return; }
+  const when = new Date(cur.last_query_at * 1000).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+  let txt = `Last query ${when}`, slow = false;
+  if (isRunning()) {
+    const ri = runInfo[cur.id] || {}, start = ri.start || (cur.run_started ? cur.run_started * 1000 : null);
+    if (start) { const secs = (Date.now() - start) / 1000; txt += ` \u00b7 running ${fmtDur(secs)}`; slow = secs > 300; }
+    if (ri.steps) txt += ` \u00b7 step ${ri.steps}`;
+    if (ri.last) txt += ` \u00b7 last call ${ri.last}s`;
+    if (ri.since && !pend.length) txt += ` \u00b7 model working ${fmtDur((Date.now() - ri.since) / 1000)}`;
+  }
+  el.textContent = txt; el.classList.toggle('slow', slow); el.hidden = false;
+}
+setInterval(tickLast, 1000);
 const hideLong = new Set();
 function longBar(n) {  // a very long session is slow however it is cached: suggest compacting or starting fresh
   const at = cfg && cfg.long_at, bar = $('longbar');
@@ -570,6 +606,7 @@ async function send(textOverride, editIndex) {
   if (!cur) await newSession();
   const sid = cur.id, here = () => !!cur && cur.id === sid;  // paint only while THIS session is the one on screen
   if (!editing) { $('in').value = ''; $('in').style.height = 'auto'; }
+  runInfo[sid] = {start: Date.now(), steps: 0, last: null, since: Date.now()}; if (cur && cur.id === sid) cur.last_query_at = Date.now() / 1000; tickLast();
   add('user', md(text)); runningSids.add(sid); setSend(true); lastTool = null; let leftover = [], spoken = '';
   const r = await fetch(`/api/sessions/${sid}/chat`, {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({text, model: $('model').value, effort: $('effort').value, edit_index: editing ? editIndex : null})});
@@ -593,7 +630,7 @@ async function send(textOverride, editIndex) {
       else if (e.type === 'tool_result') toolResult(e.output);
       else if (e.type === 'user') { drawQueued(); add('user', md(e.text)); }
       else if (e.type === 'notice') { add('sys', esc(e.text)); if ([...$('model').options].some(o => o.value === e.model)) { $('model').value = e.model; syncModelBtn(); } }
-      else if (e.type === 'usage') { setTok(e.prompt_tokens); if (e.secs) $('tok').title = `last model call: ${e.secs}s`; }
+      else if (e.type === 'usage') { const ri = runInfo[sid]; if (ri) { ri.steps++; ri.last = e.secs; ri.since = Date.now(); } setTok(e.prompt_tokens); if (e.secs) $('tok').title = `last model call: ${e.secs}s`; }
       else if (e.type === 'compacted') add('sys', 'Context compacted into a summary.');
       else if (e.type === 'error') add('err', esc(e.error) + (e.ref ? ` <a href="/api/log?ref=${e.ref}" target="_blank">View details</a>` : ''));
     }
