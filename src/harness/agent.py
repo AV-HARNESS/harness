@@ -212,6 +212,22 @@ def dup_read(messages: list, call: dict) -> str | None:
     return None
 
 
+_FAILED = re.compile(r"^(ERROR|TIMEOUT|STOPPED)|^exit=(?!0\b)\d+", re.M)
+
+
+def routine_step(messages: list) -> bool:
+    """True when the next model step only has to digest successful tool results (read a file, see a search hit, an
+    edit that worked): such steps need no long thinking. The first step of a turn, a step after an error or a failed
+    command, and a step after the user's own message all keep the default."""
+    if not messages or messages[-1]["role"] != "user":
+        return False
+    parts = messages[-1]["parts"]
+    outs = [p["functionResponse"]["response"].get("output") for p in parts if p.get("functionResponse")]
+    if not outs or any(not isinstance(o, str) or _FAILED.search(o) or "[The user sent this" in o or "harness note" in o for o in outs):
+        return False
+    return True
+
+
 def _run_parallel(calls: list[dict], emit, skip: dict | None = None) -> list[str]:
     """Several read-only calls in one step run at the same time; results keep the model's order."""
     import contextvars
@@ -397,7 +413,8 @@ def _run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = Non
         content, tries = None, 0
         while content is None:
             try:
-                content, usage, _ = llm.generate(s["model"], s["messages"], system, tools.DECLARATIONS, effort=s.get("effort", ""),
+                eff = s.get("effort", "") or ("low" if config.AUTO_EFFORT and routine_step(s["messages"]) else "")
+                content, usage, _ = llm.generate(s["model"], s["messages"], system, tools.DECLARATIONS, effort=eff,
                                                  on_text=lambda d: emit({"type": "text_delta", "text": d}))
             except CallStopped:
                 break

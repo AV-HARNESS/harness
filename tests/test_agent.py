@@ -527,3 +527,32 @@ def test_repo_map_lists_files_and_python_definitions(project, session):
 def test_repo_map_can_be_turned_off(project, session, monkeypatch):
     monkeypatch.setattr(config, "REPO_MAP", False)
     assert "repo map" not in agent.build_system(project, session).split("### block")[0].split("Project:")[1]
+
+
+def _result_msg(out):
+    return [{"role": "user", "parts": [{"text": "go"}]},
+            {"role": "model", "parts": [{"functionCall": {"name": "bash", "args": {}}}]},
+            {"role": "user", "parts": [{"functionResponse": {"name": "bash", "response": {"output": out}}}]}]
+
+
+@covers("R-LOOP-24")
+def test_routine_step_detection():
+    assert agent.routine_step(_result_msg("1\tcontent")) is True
+    assert agent.routine_step(_result_msg("exit=0\nok")) is True
+    assert agent.routine_step(_result_msg("exit=1\n[stderr]\nboom")) is False
+    assert agent.routine_step(_result_msg("ERROR: old string not found")) is False
+    assert agent.routine_step(_result_msg("TIMEOUT after 5s")) is False
+    assert agent.routine_step(_result_msg("ok\n\n[The user sent this while you were working - read it and adapt]:\nstop")) is False
+    assert agent.routine_step([{"role": "user", "parts": [{"text": "hello"}]}]) is False  # first step of a turn
+
+
+@covers("R-LOOP-24")
+def test_steps_after_tool_results_run_at_low_effort_unless_user_picked_one(session, fake, project):
+    fake.push((200, gem(call("list_dir"))), (200, gem(text("done"))))
+    agent.run_turn(session, "go", lambda e: None)
+    first, second = (r["body"].get("generationConfig") for r in fake.requests[:2])
+    assert first is None and second  # planning step at the default, the digest step at low thinking
+    session["effort"] = "high"
+    fake.push((200, gem(call("list_dir"))), (200, gem(text("done"))))
+    agent.run_turn(session, "again", lambda e: None)
+    assert all(r["body"].get("generationConfig") for r in fake.requests[2:4])  # explicit effort applies to every step
