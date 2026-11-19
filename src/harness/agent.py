@@ -15,8 +15,10 @@ BASE_SYSTEM = (
     "(reading files, searching, listing, fetching), issue them together in ONE step instead of one per step; "
     "prefer read_files over many read_file calls and search over opening files to look for text. "
     "For broad exploration (finding where something lives, surveying many files) use delegate: a sub-agent reads "
-    "it all in its own context and returns just the answer. To read code use read_file with offset and limit "
-    "(or several read_file calls in one step) and search; do not slice files with bash python -c, type or findstr.\n"
+    "it all in its own context and returns just the answer. Read a whole file in ONE read_file call (it returns up "
+    "to 2000 lines) instead of many small slices, and open every file you will need in the same step. For a file "
+    "longer than that, call outline first to find the right line range. Whatever you read stays in your context "
+    "while you work, so do not read the same thing again. Do not slice files with bash python -c, type or findstr.\n"
     "Output length is the slowest part: generating text takes seconds per few hundred tokens. Change existing files "
     "with edit_file (only the changed lines), not by rewriting them with write_file; keep prose and plans short; "
     "do not repeat file contents or tool output back in your replies.\n\n"
@@ -171,15 +173,49 @@ def run_subagent(task: str, model: str) -> str:
     return "(sub-agent ran out of steps) " + "".join(p.get("text", "") for p in msgs[-2]["parts"] if p.get("text"))[:SUB_MAX_REPLY]
 
 
-def _run_parallel(calls: list[dict], emit) -> list[str]:
+WRITERS = frozenset({"edit_file", "write_file", "bash"})  # anything that can change a file
+
+
+def _norm_read(c: dict) -> tuple:
+    a = c.get("args") or {}
+    return (str(a.get("path", "")), int(a.get("offset") or 1), int(a.get("limit") or 2000))
+
+
+def dup_read(messages: list, call: dict) -> str | None:
+    """If this exact read_file was already answered earlier in the conversation, the answer is still in full above,
+    and nothing that can change files ran since, return a short note instead of reading the file again."""
+    if call.get("name") != "read_file":
+        return None
+    want = _norm_read(call)
+    for i in range(len(messages) - 1, 0, -1):
+        m = messages[i]
+        if m["role"] != "model":
+            continue
+        calls = [p["functionCall"] for p in m["parts"] if "functionCall" in p]
+        for k in reversed(range(len(calls))):
+            c = calls[k]
+            if c["name"] in WRITERS:
+                return None
+            if c["name"] == "read_file" and _norm_read(c) == want and i + 1 < len(messages):
+                resp = [p for p in messages[i + 1]["parts"] if p.get("functionResponse")]
+                out = resp[k]["functionResponse"]["response"].get("output") if k < len(resp) else None
+                if isinstance(out, str) and not out.startswith(("[old result", "ERROR")) and "[trimmed in history" not in out:
+                    return "(unchanged: you already read this exact range earlier in this conversation and it is still above. Use that.)"
+                return None
+    return None
+
+
+def _run_parallel(calls: list[dict], emit, skip: dict | None = None) -> list[str]:
     """Several read-only calls in one step run at the same time; results keep the model's order."""
     import contextvars
     from concurrent.futures import ThreadPoolExecutor
+    skip = skip or {}
     for c in calls:
         emit({"type": "tool_call", "name": c["name"], "args": c.get("args", {})})
     with ThreadPoolExecutor(min(len(calls), 6)) as ex:
-        futs = [ex.submit(contextvars.copy_context().run, tools.run, c["name"], c.get("args", {})) for c in calls]
-        outs = [f.result() for f in futs]
+        futs = [None if k in skip else ex.submit(contextvars.copy_context().run, tools.run, c["name"], c.get("args", {}))
+                for k, c in enumerate(calls)]
+        outs = [skip[k] if f is None else f.result() for k, f in enumerate(futs)]
     for c, out in zip(calls, outs):
         emit({"type": "tool_result", "name": c["name"], "output": out})
     return outs
@@ -225,21 +261,27 @@ def stub_old_results(messages: list, after: int | None = None, start: int = 1) -
     after = config.STUB_AFTER if after is None else after
     if after <= 0:
         return 0
+    boundary = max(len(messages) - after, 0)
+    # Results inside the age window always stay. Older ones also stay while the newest results together fit the
+    # size budget, so a code-reading task does not forget (and re-read) files it opened a few steps ago.
+    budget = config.STUB_KEEP * 4  # tokens -> characters
+    spent = sum(len(p["functionResponse"]["response"].get("output") or "") for m in messages[boundary:]
+                for p in m["parts"] if isinstance(p.get("functionResponse", {}).get("response", {}).get("output"), str))
     n = 0
-    for i in range(max(start, 1), max(len(messages) - after, 0)):
+    for i in range(boundary - 1, 0, -1):  # newest first, so the budget is spent on the most recent results
         m = messages[i]
         if m["role"] != "user" or messages[i - 1]["role"] != "model":
             continue
         calls = [p["functionCall"] for p in messages[i - 1]["parts"] if "functionCall" in p]
-        k = 0
-        for p in m["parts"]:
-            fr = p.get("functionResponse")
-            if not fr:
-                continue
+        resp = [p for p in m["parts"] if p.get("functionResponse")]
+        for k in reversed(range(len(resp))):
+            fr = resp[k]["functionResponse"]
             call = calls[k] if k < len(calls) else {}
-            k += 1
             out = fr["response"].get("output")
             if not isinstance(out, str) or len(out) < STUB_MIN or out.startswith("[old result"):
+                continue
+            if spent + len(out) <= budget:
+                spent += len(out)
                 continue
             args = ", ".join(f"{a}={str(v)[:40]!r}" for a, v in (call.get("args") or {}).items())[:160]
             first = out.strip().splitlines()[0][:100] if out.strip() else ""
@@ -330,7 +372,7 @@ def _run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = Non
 
     # The system prompt is built once per user turn and kept byte-identical across steps, so the provider can reuse
     # its cache of the unchanged prefix (system + tools + earlier history). It is rebuilt when a block changes.
-    system = None
+    system, explore = None, 0
     for _ in range(config.MAX_STEPS):
         if stop and stop.is_set():
             emit({"type": "text", "text": "(stopped)"})
@@ -386,11 +428,13 @@ def _run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = Non
             store.save(s)
             continue
         results = []
-        outs = _run_parallel(calls, emit) if len(calls) > 1 and all(c["name"] in tools.READONLY for c in calls) else None
+        prior = s["messages"][:-1]  # history before this step's own calls
+        dups = {k: d for k, c in enumerate(calls) if (d := dup_read(prior, c))}
+        outs = _run_parallel(calls, emit, dups) if len(calls) > 1 and all(c["name"] in tools.READONLY for c in calls) else None
         for k, c in enumerate(calls):
             if outs is None:
                 emit({"type": "tool_call", "name": c["name"], "args": c.get("args", {})})
-                out = tools.run(c["name"], c.get("args", {}))
+                out = dups.get(k) or tools.run(c["name"], c.get("args", {}))
                 emit({"type": "tool_result", "name": c["name"], "output": out})
             else:
                 out = outs[k]
@@ -400,6 +444,11 @@ def _run_turn(s: dict, text: str, emit: Emit, stop: threading.Event | None = Non
             results.append({"functionResponse": {"name": c["name"], "response": {"output": stored}}})
             if c["name"] in BLOCK_WRITERS:
                 system = None  # block edits apply on the next step
+        explore = explore + 1 if all(c["name"] in tools.READONLY and c["name"] != "delegate" for c in calls) else 0
+        if config.EXPLORE_LIMIT and explore and explore % config.EXPLORE_LIMIT == 0:
+            results[-1]["functionResponse"]["response"]["output"] += (
+                f"\n\n[harness note: {explore} read-only steps in a row. Stop exploring: answer from what you have, "
+                "or hand the rest of the digging to delegate.]")
         queued = [] if (stop and stop.is_set()) else _drain(inbox)  # delivered with the tool results
         for t in queued:
             emit({"type": "user", "text": t})

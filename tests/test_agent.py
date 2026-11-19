@@ -104,8 +104,9 @@ def test_default_compaction_threshold_is_low_and_docs_agree():
         assert "600000" not in t, f + " still documents the old 600000 threshold"
 
 
-def test_system_prompt_points_at_read_file_ranges_not_bash_slicing():
-    assert "read_file with offset and limit" in agent.BASE_SYSTEM and "python -c" in agent.BASE_SYSTEM
+def test_system_prompt_says_whole_file_reads_outline_and_no_bash_slicing():
+    p = agent.BASE_SYSTEM
+    assert "whole file in ONE read_file call" in p and "outline" in p and "python -c" in p and "do not read the same thing again" in p
 
 
 def test_compaction_replaces_old_turns_keeps_recent(session, fake, monkeypatch):
@@ -464,3 +465,44 @@ def test_stop_kills_a_running_command(monkeypatch):
 @covers("R-LOOP-21")
 def test_bash_does_not_wait_for_keyboard_input():
     assert "exit=0" in tools.bash("python3 -c \"import sys; print(len(sys.stdin.read()))\"", timeout=20)
+
+
+def _read_step(i, path, body, offset=None):
+    args = {"path": path} if offset is None else {"path": path, "offset": offset}
+    return [{"role": "model", "parts": [{"functionCall": {"name": "read_file", "args": args}}]},
+            {"role": "user", "parts": [{"functionResponse": {"name": "read_file", "response": {"output": body}}}]}]
+
+
+@covers("R-LOOP-22")
+def test_recent_results_stay_in_full_within_the_size_budget(monkeypatch):
+    monkeypatch.setattr(config, "STUB_KEEP", 2000)  # tokens -> 8000 chars
+    msgs = [{"role": "user", "parts": [{"text": "go"}]}]
+    for i in range(10):
+        msgs += _read_step(i, f"f{i}.py", f"first {i}\n" + "x" * 1000)
+    agent.stub_old_results(msgs, after=4)
+    outs = [m["parts"][0]["functionResponse"]["response"]["output"] for m in msgs if m["role"] == "user" and "functionResponse" in m["parts"][0]]
+    full = [o for o in outs if not o.startswith("[old result")]
+    assert 6 <= len(full) <= 8 and outs[-1] in full and outs[0].startswith("[old result")  # newest kept, oldest dropped
+
+
+@covers("R-LOOP-22")
+def test_duplicate_read_gets_a_short_note_until_something_writes():
+    msgs = [{"role": "user", "parts": [{"text": "go"}]}] + _read_step(0, "a.py", "content " * 50)
+    call = {"name": "read_file", "args": {"path": "a.py"}}
+    assert "already read" in agent.dup_read(msgs, call)
+    assert agent.dup_read(msgs, {"name": "read_file", "args": {"path": "a.py", "offset": 50}}) is None  # a different range
+    msgs += [{"role": "model", "parts": [{"functionCall": {"name": "edit_file", "args": {}}}]},
+             {"role": "user", "parts": [{"functionResponse": {"name": "edit_file", "response": {"output": "ok"}}}]}]
+    assert agent.dup_read(msgs, call) is None  # the file may have changed
+    msgs2 = [{"role": "user", "parts": [{"text": "go"}]}] + _read_step(0, "a.py", "[old result dropped, 400 chars: ...]")
+    assert agent.dup_read(msgs2, call) is None  # the earlier answer is gone: read again
+
+
+@covers("R-LOOP-22")
+def test_explore_limit_adds_a_wrap_up_note(session, fake, project, monkeypatch):
+    monkeypatch.setattr(config, "EXPLORE_LIMIT", 2)
+    fake.push((200, gem(call("list_dir"))), (200, gem(call("list_dir", path="."))), (200, gem(text("done"))))
+    agent.run_turn(session, "go", lambda e: None)
+    outs = [p["functionResponse"]["response"]["output"] for m in session["messages"] if m["role"] == "user"
+            for p in m["parts"] if "functionResponse" in p]
+    assert "harness note" not in outs[0] and "2 read-only steps in a row" in outs[1]

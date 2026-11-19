@@ -97,7 +97,7 @@ def test_long_output_is_clipped_in_the_middle(inproject):
 
 def test_every_registered_tool_is_declared():
     names = {d["name"] for d in tools.DECLARATIONS[0]["functionDeclarations"]}
-    assert names == set(tools.REGISTRY) and len(names) == 13
+    assert names == set(tools.REGISTRY) and len(names) == 14
 
 
 @covers("R-TOOL-09")
@@ -154,3 +154,22 @@ def test_read_files_and_search_save_round_trips(inproject):
     assert "a.py:2: needle one" in hits and "b.txt:2: Needle two" in hits and "hidden" not in hits
     assert "b.txt" not in tools.run("search", {"pattern": "needle", "glob": "*.py"})
     assert tools.run("search", {"pattern": "zzz-nothing"}) == "(no matches)"
+
+
+@covers("R-LOOP-22")
+def test_outline_lists_definitions_with_line_numbers(inproject):
+    root = inproject["root"]
+    open(f"{root}/m.py", "w").write("import os\n\nclass A:\n    def go(self):\n        pass\n\nasync def run():\n    pass\n")
+    open(f"{root}/n.md", "w").write("# Title\ntext\n## Part\n")
+    out = tools.run("outline", {"path": "m.py"})
+    assert "3: class A" in out and "4: def go" in out and "7: def run" in out
+    md = tools.run("outline", {"path": "n.md"})
+    assert "1: heading" in md and "3: heading" in md
+    assert "outline" in tools.READONLY
+
+
+@covers("R-LOOP-22")
+def test_search_shows_context_lines_by_default(inproject):
+    open(f"{inproject['root']}/a.txt", "w").write("one\ntwo\nNEEDLE\nfour\nfive\n")
+    out = tools.run("search", {"pattern": "NEEDLE"})
+    assert "a.txt:2: two" in out and "a.txt:4: four" in out
