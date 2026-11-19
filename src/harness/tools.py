@@ -114,10 +114,45 @@ def read_files(paths: list, limit: int = 400) -> str:
     return _clip("\n\n".join(out) or "(no paths given)", MAX_OUT * 2)
 
 
+def outline(path: str) -> str:
+    """Functions, classes and headings of a file with line numbers: find where something is, then read just that part."""
+    import ast
+    import re
+    if err := _guard(_p(path)):
+        return err
+    f = _p(path)
+    text = f.read_text(encoding="utf-8", errors="replace")
+    lines = text.splitlines()
+    out = []
+    if f.suffix == ".py":
+        try:
+            for n in ast.walk(ast.parse(text)):
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    kind = "class" if isinstance(n, ast.ClassDef) else "def"
+                    out.append((n.lineno, f"{kind} {n.name}  (to line {getattr(n, 'end_lineno', n.lineno)})"))
+        except SyntaxError:
+            pass
+    else:
+        pats = [(r"^\s*(?:export\s+)?(?:async\s+)?(?:function|class)\s+(\w+)", "def"),
+                (r"^\s*(?:export\s+)?(?:const|let|var)\s+(\w+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|\w+)\s*=>", "fn"),
+                (r"^(#{1,4})\s+(.+)", "heading"),
+                (r"^([.#@]?[A-Za-z][^{;]*?)\s*\{\s*$", "block"),
+                (r"""<(?:section|form|table|div|button|template)[^>]*\bid=["']([^"']+)""", "id")]
+        for i, line in enumerate(lines, 1):
+            for pat, kind in pats:
+                m = re.search(pat, line)
+                if m:
+                    out.append((i, f"{kind} {m.group(m.lastindex)[:80].strip()}"))
+                    break
+    out.sort()
+    head = f"{path}: {len(lines)} lines"
+    return _clip(head + "\n" + "\n".join(f"{n}: {t}" for n, t in out[:400]) if out else head + "\n(no definitions found; use search or read_file)")
+
+
 _SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build", ".idea", ".next", "target"}
 
 
-def search(pattern: str, path: str = ".", glob: str = "", context: int = 0, max_results: int = 100) -> str:
+def search(pattern: str, path: str = ".", glob: str = "", context: int = 2, max_results: int = 100) -> str:
     """Regex search through text files (no grep needed, works on Windows): file:line: text."""
     import fnmatch
     import re
@@ -155,7 +190,7 @@ def delegate(task: str) -> str:
     return agent.run_subagent(task, MODEL.get())
 
 
-READONLY = frozenset({"delegate", "read_file", "read_files", "list_dir", "search", "list_blocks", "read_block", "web_fetch", "web_search"})
+READONLY = frozenset({"delegate", "outline", "read_file", "read_files", "list_dir", "search", "list_blocks", "read_block", "web_fetch", "web_search"})
 
 
 def write_file(path: str, content: str) -> str:
@@ -260,10 +295,13 @@ S, I, B = {"type": "STRING"}, {"type": "INTEGER"}, {"type": "BOOLEAN"}
 REGISTRY = {
     "bash": (bash, "Run a shell command in the working directory. Returns exit code, stdout, stderr.",
              _obj({"command": S, "timeout": I}, ["command"])),
-    "read_file": (read_file, "Read a text file with line numbers.",
+    "read_file": (read_file, "Read a text file with line numbers. Returns up to 2000 lines: read a whole file in one call; "
+                  "use offset/limit only for longer files.",
                   _obj({"path": S, "offset": I, "limit": I}, ["path"])),
     "read_files": (read_files, "Read several text files in ONE call (preferred over many read_file calls).",
                    _obj({"paths": {"type": "ARRAY", "items": S}, "limit": I}, ["paths"])),
+    "outline": (outline, "List the functions, classes and headings of a file with line numbers (and where each ends). Use it on "
+                "a big file to find the right place, then read_file just that range.", _obj({"path": S}, ["path"])),
     "search": (search, "Regex search across files (case-insensitive); returns file:line: text. Use this instead of "
                "reading files to find something.", _obj({"pattern": S, "path": S, "glob": S, "context": I, "max_results": I}, ["pattern"])),
     "write_file": (write_file, "Create or overwrite a file.", _obj({"path": S, "content": S}, ["path", "content"])),

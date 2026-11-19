@@ -41,7 +41,7 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "MODELS", {k: dict(v) for k, v in DEFAULT_MODELS.items()})
     for name, val in dict(REDACT=True, REDACT_TERMS=[], ACCESS_TOKEN="", REFRESH_TOKEN="", TOKEN_URL="",
                           CLIENT_ID="", CLIENT_SECRET="", OAUTH_SCOPE="", OAUTH_AUDIENCE="", OAUTH_CLIENT_AUTH="body",
-                          PROJECT="", LOCATION="global", HOST="", MAX_STEPS=40, COMPACT_AT=80000, KEEP_TURNS=6,
+                          STUB_KEEP=0, EXPLORE_LIMIT=0, PROJECT="", LOCATION="global", HOST="", MAX_STEPS=40, COMPACT_AT=80000, KEEP_TURNS=6,
                           HISTORY_TOOL_TRIM=2000, CONFINE=True, REDACT_STRICT=False, REDACT_PATTERNS=[], AUDIT_LOG=None, DRY_RUN=False).items():
         monkeypatch.setattr(config, name, val)
     monkeypatch.setitem(auth._cc, "token", "")
