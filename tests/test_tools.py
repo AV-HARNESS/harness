@@ -173,3 +173,15 @@ def test_search_shows_context_lines_by_default(inproject):
     open(f"{inproject['root']}/a.txt", "w").write("one\ntwo\nNEEDLE\nfour\nfive\n")
     out = tools.run("search", {"pattern": "NEEDLE"})
     assert "a.txt:2: two" in out and "a.txt:4: four" in out
+
+
+@covers("R-LOOP-23")
+def test_edit_file_applies_several_edits_in_one_call_or_none(inproject):
+    root = inproject["root"]
+    open(f"{root}/f.txt", "w").write("alpha\nbeta\ngamma\n")
+    out = tools.run("edit_file", {"path": "f.txt", "edits": [{"old": "alpha", "new": "A"}, {"old": "gamma", "new": "G"}]})
+    assert "2 replacements in 2 edits" in out and open(f"{root}/f.txt").read() == "A\nbeta\nG\n"
+    bad = tools.run("edit_file", {"path": "f.txt", "edits": [{"old": "beta", "new": "B"}, {"old": "missing", "new": "x"}]})
+    assert bad.startswith("ERROR: edit 2: old string not found") and "nothing was written" in bad
+    assert open(f"{root}/f.txt").read() == "A\nbeta\nG\n"  # the first edit was not applied either
+    assert "1 replacement" in tools.run("edit_file", {"path": "f.txt", "old": "beta", "new": "b"})  # old single-edit form still works
