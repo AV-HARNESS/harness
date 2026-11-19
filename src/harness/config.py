@@ -122,6 +122,7 @@ GEMINI_CACHE_KMS_KEY = os.environ.get("HARNESS_GEMINI_CACHE_KMS_KEY", "")  # onl
 GEMINI_CACHE_TTL = int(os.environ.get("HARNESS_GEMINI_CACHE_TTL", "900"))        # seconds a cache lives
 CACHE = os.environ.get("HARNESS_CACHE", "1") != "0"  # mark the stable prompt prefix for provider-side caching (Anthropic)
 STUB_BATCH = 6  # stub old results in batches so the cached prefix only changes every few steps
+AUTO_EFFORT = os.environ.get("HARNESS_AUTO_EFFORT", "1") != "0"  # low thinking on routine steps that follow successful tool results
 REPO_MAP = os.environ.get("HARNESS_REPO_MAP", "1") != "0"  # put a map of the project folder in the system prompt
 REPO_MAP_CHARS = int(os.environ.get("HARNESS_REPO_MAP_CHARS", "10000"))
 STUB_KEEP = int(os.environ.get("HARNESS_STUB_KEEP", "25000"))  # recent tool results are kept in full up to this many tokens, even if older than STUB_AFTER (0 = age only)
