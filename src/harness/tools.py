@@ -202,18 +202,27 @@ def write_file(path: str, content: str) -> str:
     return f"wrote {len(content)} chars to {p}"
 
 
-def edit_file(path: str, old: str, new: str, replace_all: bool = False) -> str:
+def edit_file(path: str, old: str = "", new: str = "", replace_all: bool = False, edits: list | None = None) -> str:
+    """Replace exact strings in a file. `edits` applies several changes in order in ONE call; if any one does not
+    match, nothing is written."""
     p = _p(path)
-    if err := _guard(p, old + new):
+    todo = [{"old": e.get("old", ""), "new": e.get("new", ""), "replace_all": bool(e.get("replace_all"))} for e in (edits or [])
+            if isinstance(e, dict)] or [{"old": old, "new": new, "replace_all": replace_all}]
+    if err := _guard(p, "".join(e["old"] + e["new"] for e in todo)):
         return err
     text = p.read_text(encoding="utf-8")
-    n = text.count(old)
-    if n == 0:
-        return "ERROR: old string not found"
-    if n > 1 and not replace_all:
-        return f"ERROR: old string appears {n} times; add context or set replace_all"
-    p.write_text(text.replace(old, new) if replace_all else text.replace(old, new, 1), encoding="utf-8")
-    return f"edited {p} ({n if replace_all else 1} replacement)"
+    total = 0
+    for k, e in enumerate(todo, 1):
+        label = f"edit {k}: " if len(todo) > 1 else ""
+        n = text.count(e["old"]) if e["old"] else 0
+        if n == 0:
+            return f"ERROR: {label}old string not found" + ("; nothing was written" if len(todo) > 1 else "")
+        if n > 1 and not e["replace_all"]:
+            return f"ERROR: {label}old string appears {n} times; add context or set replace_all" + ("; nothing was written" if len(todo) > 1 else "")
+        text = text.replace(e["old"], e["new"]) if e["replace_all"] else text.replace(e["old"], e["new"], 1)
+        total += n if e["replace_all"] else 1
+    p.write_text(text, encoding="utf-8")
+    return f"edited {p} ({total} replacement{'s' if total != 1 else ''}{f' in {len(todo)} edits' if len(todo) > 1 else ''})"
 
 
 def list_dir(path: str = ".") -> str:
@@ -305,8 +314,10 @@ REGISTRY = {
     "search": (search, "Regex search across files (case-insensitive); returns file:line: text. Use this instead of "
                "reading files to find something.", _obj({"pattern": S, "path": S, "glob": S, "context": I, "max_results": I}, ["pattern"])),
     "write_file": (write_file, "Create or overwrite a file.", _obj({"path": S, "content": S}, ["path", "content"])),
-    "edit_file": (edit_file, "Replace an exact string in a file.",
-                  _obj({"path": S, "old": S, "new": S, "replace_all": B}, ["path", "old", "new"])),
+    "edit_file": (edit_file, "Replace an exact string in a file. For several changes to one file pass `edits` (a list of "
+                  "{old, new, replace_all}) in ONE call instead of one call per change; all apply or none do.",
+                  _obj({"path": S, "old": S, "new": S, "replace_all": B,
+                        "edits": {"type": "ARRAY", "items": _obj({"old": S, "new": S, "replace_all": B}, ["old", "new"])}}, ["path"])),
     "list_dir": (list_dir, "List a directory.", _obj({"path": S}, [])),
     "list_blocks": (list_blocks, "List this project's persistent context blocks.", _obj({}, [])),
     "read_block": (read_block, "Read a context block by name.", _obj({"name": S}, ["name"])),
