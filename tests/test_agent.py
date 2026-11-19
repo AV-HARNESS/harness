@@ -98,7 +98,7 @@ def test_thoughts_hidden_but_kept_verbatim(session, fake):
 def test_default_compaction_threshold_is_low_and_docs_agree():
     import pathlib
     root = pathlib.Path(__file__).resolve().parent.parent
-    assert '"HARNESS_COMPACT_AT", "50000"' in (root / "src" / "harness" / "config.py").read_text(encoding="utf-8")
+    assert '"HARNESS_COMPACT_AT", "40000"' in (root / "src" / "harness" / "config.py").read_text(encoding="utf-8")
     for f in (".env.example", "README.md"):
         t = (root / f).read_text(encoding="utf-8")
         assert "600000" not in t, f + " still documents the old 600000 threshold"

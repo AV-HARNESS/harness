@@ -242,3 +242,41 @@ def test_compact_button_glows_when_prompt_is_big(app):
         page.evaluate("setTok(0)")
         assert page.locator("#compact.nudge").count() == 0
         browser.close()
+
+
+@covers("R-UI-11")
+def test_chat_does_not_snap_back_when_reader_scrolled_up(app):
+    base, model, projects, api = app
+    (p0, s0), _ = projects
+    with playwright.sync_playwright() as pw:
+        browser = pw.chromium.launch(executable_path=CHROME, args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 1100, "height": 500})
+        page.goto(f"{base}/#p={p0['id']}&s={s0['id']}")
+        page.wait_for_selector("#list .s")
+        page.evaluate("for (let i = 0; i < 40; i++) add('', 'line ' + i)")
+        assert page.evaluate("$('log').scrollTop > 100")
+        page.evaluate("$('log').scrollTop = 0"); page.wait_for_timeout(100)
+        page.evaluate("add('', 'new output')")  # arrives while the reader is at the top
+        assert page.evaluate("$('log').scrollTop") < 50 and page.locator("#jump:visible").count() == 1
+        page.click("#jump")
+        assert page.evaluate("$('log').scrollHeight - $('log').scrollTop - $('log').clientHeight < 5")
+        browser.close()
+
+
+@covers("R-UI-12")
+def test_long_session_bar_shows_above_threshold(app):
+    base, model, projects, api = app
+    (p0, s0), _ = projects
+    with playwright.sync_playwright() as pw:
+        browser = pw.chromium.launch(executable_path=CHROME, args=["--no-sandbox"])
+        page = browser.new_page(viewport={"width": 1100, "height": 700})
+        page.goto(f"{base}/#p={p0['id']}&s={s0['id']}")
+        page.wait_for_selector("#list .s")
+        page.wait_for_function("typeof cfg !== 'undefined' && cfg")
+        page.evaluate("setTok(20000)")
+        assert page.locator("#longbar:visible").count() == 0
+        page.evaluate("setTok(90000)")
+        assert page.locator("#longbar:visible").count() == 1 and page.locator("#lb-new").count() == 1
+        page.click("#lb-x")
+        assert page.locator("#longbar:visible").count() == 0
+        browser.close()

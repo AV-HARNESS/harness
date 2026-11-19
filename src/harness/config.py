@@ -106,8 +106,9 @@ DEFAULT_MODEL = os.environ.get("HARNESS_DEFAULT_MODEL", "flash")
 # --- agent ---
 WORKDIR = Path(os.environ.get("HARNESS_WORKDIR", os.getcwd())).resolve()  # default root for new projects
 MAX_STEPS = int(os.environ.get("HARNESS_MAX_STEPS", "200"))
+LONG_AT = int(os.environ.get("HARNESS_LONG_AT", "60000"))  # above this a bar suggests compacting or continuing in a new session (0 = never)
 COMPACT_HINT_AT = int(os.environ.get("HARNESS_COMPACT_HINT_AT", "30000"))  # the Compact button starts glowing above this (0 = never)
-COMPACT_AT = int(os.environ.get("HARNESS_COMPACT_AT", "50000"))        # compact when prompt exceeds this (lower = faster steps)
+COMPACT_AT = int(os.environ.get("HARNESS_COMPACT_AT", "40000"))        # compact when prompt exceeds this (lower = faster steps)
 KEEP_TURNS = int(os.environ.get("HARNESS_KEEP_TURNS", "6"))            # full turns to keep after compaction
 GEMINI_CACHE = os.environ.get("HARNESS_GEMINI_CACHE", "") != "0"      # Gemini explicit context cache for big prompts (0 = never)
 GEMINI_CACHE_VERTEX = os.environ.get("HARNESS_GEMINI_CACHE", "") == "1"  # on Vertex it must be asked for: orgs often block it (CMEK policy)

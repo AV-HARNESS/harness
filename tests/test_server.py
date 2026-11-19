@@ -462,3 +462,27 @@ def test_pin_and_archive_sessions(client, session):
     assert [x["id"] for x in arc] == [sid] and not arc[0]["pinned"]  # archiving unpins
     client.patch(f"/api/sessions/{sid}", json={"archived": False})
     assert sid in [x["id"] for x in client.get(f"/api/sessions?project={pid}").json()]
+
+
+@covers("R-UI-12")
+def test_handoff_copies_session_and_summarizes_the_copy(client, session, monkeypatch):
+    sid = session["id"]
+    s = store.load(sid)
+    s["messages"] = [{"role": "user", "parts": [{"text": "hello"}]}, {"role": "model", "parts": [{"text": "hi"}]}]
+    store.save(s)
+    seen = {}
+    def fake_compact(x, emit=None):
+        seen["id"], seen["n"] = x["id"], len(x["messages"])
+        return True
+    monkeypatch.setattr(server.agent, "compact", fake_compact)
+    r = client.post(f"/api/sessions/{sid}/handoff").json()
+    new = r["session"]
+    assert new != sid and r["started"] is True
+    import time
+    for _ in range(100):
+        j = client.get(f"/api/sessions/{new}/compact").json()
+        if j["state"] != "running":
+            break
+        time.sleep(0.05)
+    assert j["state"] == "done" and seen == {"id": new, "n": 2}
+    assert store.load(new)["title"].startswith("Continued") and len(store.load(sid)["messages"]) == 2  # original untouched
