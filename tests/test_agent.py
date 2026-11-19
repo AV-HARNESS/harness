@@ -80,7 +80,7 @@ def test_system_prompt_has_project_blocks_and_instructions_and_updates_each_step
 def test_block_budget_caps(project, session):
     store.write_block(project["id"], "huge", "a" * 20000)
     sysmsg = agent.build_system(project, session)
-    assert sysmsg.count("a") <= agent.MAX_BLOCK + 100
+    assert "a" * (agent.MAX_BLOCK + 1) not in sysmsg and "a" * 1000 in sysmsg  # the block is capped
     for i in range(8):
         store.write_block(project["id"], f"b{i}", "z" * 7000)
     assert "omitted: context budget" in agent.build_system(project, session)
@@ -506,3 +506,24 @@ def test_explore_limit_adds_a_wrap_up_note(session, fake, project, monkeypatch):
     outs = [p["functionResponse"]["response"]["output"] for m in session["messages"] if m["role"] == "user"
             for p in m["parts"] if "functionResponse" in p]
     assert "harness note" not in outs[0] and "2 read-only steps in a row" in outs[1]
+
+
+@covers("R-LOOP-23")
+def test_repo_map_lists_files_and_python_definitions(project, session):
+    import os
+    root = project["root"]
+    os.makedirs(f"{root}/app/sub"); os.makedirs(f"{root}/node_modules/x")
+    open(f"{root}/app/main.py", "w").write("class Router:\n    def inner(self): pass\n\ndef serve(): pass\n")
+    open(f"{root}/app/sub/util.py", "w").write("async def helper(): pass\n")
+    open(f"{root}/node_modules/x/skip.js", "w").write("x")
+    m = agent.build_system(project, session)
+    assert "### repo map" in m and "app/ : main.py" in m and "app/sub/ : util.py" in m
+    assert "app/main.py: class Router; serve" in m and "async" not in m.split("Python definitions:")[1].split("app/sub")[0]
+    assert "skip.js" not in m
+    assert agent.build_system(project, session) == m  # unchanged files: byte-identical, so the prompt cache holds
+
+
+@covers("R-LOOP-23")
+def test_repo_map_can_be_turned_off(project, session, monkeypatch):
+    monkeypatch.setattr(config, "REPO_MAP", False)
+    assert "repo map" not in agent.build_system(project, session).split("### block")[0].split("Project:")[1]

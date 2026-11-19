@@ -4,7 +4,7 @@ import threading
 from pathlib import Path
 from typing import Callable
 
-from . import config, llm, store, tools
+from . import config, llm, repomap, store, tools
 from .providers import STOP, CallStopped, CallTimeout
 
 BASE_SYSTEM = (
@@ -16,11 +16,11 @@ BASE_SYSTEM = (
     "prefer read_files over many read_file calls and search over opening files to look for text. "
     "For broad exploration (finding where something lives, surveying many files) use delegate: a sub-agent reads "
     "it all in its own context and returns just the answer. Read a whole file in ONE read_file call (it returns up "
-    "to 2000 lines) instead of many small slices, and open every file you will need in the same step. For a file "
+    "to 2000 lines) instead of many small slices (a repo map of the project is included below),  and open every file you will need in the same step. For a file "
     "longer than that, call outline first to find the right line range. Whatever you read stays in your context "
     "while you work, so do not read the same thing again. Do not slice files with bash python -c, type or findstr.\n"
     "Output length is the slowest part: generating text takes seconds per few hundred tokens. Change existing files "
-    "with edit_file (only the changed lines), not by rewriting them with write_file; keep prose and plans short; "
+    "with edit_file (only the changed lines; several changes to one file go in ONE call as edits=[...]), not by rewriting them with write_file; keep prose and plans short; "
     "do not repeat file contents or tool output back in your replies.\n\n"
     "Project: {name}\nProject root (working directory; relative paths resolve here): {root}\n"
     "Context blocks are persistent notes for this project and are shown below. When goals, decisions, "
@@ -100,6 +100,13 @@ def select_blocks(blocks: list[dict], texts: dict[str, str], s: dict) -> list[st
 def build_system(project: dict, s: dict) -> str:
     system = BASE_SYSTEM.format(name=project["name"], root=project["root"])
     system += _guide_section(project["root"])
+    if config.REPO_MAP:
+        try:
+            rm = repomap.build(project["root"], config.REPO_MAP_CHARS)
+        except Exception:  # a map is a convenience: never let it break a turn
+            rm = ""
+        if rm:
+            system += ("\n\n### repo map (auto-generated; use it to go straight to the right file, then outline/read_file)\n" + rm)
     blocks = store.list_blocks(project["id"])
     texts = {b["name"]: store.read_block(project["id"], b["name"])[:MAX_BLOCK] for b in blocks}
     chosen = select_blocks(blocks, texts, s)
