@@ -78,7 +78,7 @@ def get_config():
     return {"models": {k: f"{v.get('provider', 'gemini')}:{v['model']}" for k, v in ok.items()},
             "hidden_models": hidden, "default_model": default, "project": config.PROJECT,
             "location": config.LOCATION, "logged_in": auth.is_logged_in(),
-            "has_api_key": has_api_key, "compact_at": config.COMPACT_AT, "compact_hint_at": config.COMPACT_HINT_AT}
+            "has_api_key": has_api_key, "compact_at": config.COMPACT_AT, "compact_hint_at": config.COMPACT_HINT_AT, "long_at": config.LONG_AT}
 
 
 @app.get("/api/log", response_class=PlainTextResponse)
@@ -329,6 +329,25 @@ def compact(sid: str):
     _compact_jobs[sid] = {"state": "running"}
     threading.Thread(target=_run_compact, args=(sid, s), daemon=True).start()
     return {"started": True}
+
+
+@app.post("/api/sessions/{sid}/handoff")
+def handoff(sid: str):
+    """Continue in a new session: copy this one and summarize the copy in the background (the original is untouched)."""
+    if sid in _busy:
+        raise HTTPException(409, "session is running; try again when it finishes")
+    s = _get(sid)
+    n = store.create(s["project"], "Continued: " + s["title"], s["model"], s.get("instructions", ""))
+    n["messages"] = json.loads(json.dumps(s["messages"]))
+    for k in ("effort", "block_sel"):
+        if k in s:
+            n[k] = s[k]
+    n["title_auto"] = False
+    store.save(n)
+    _busy.add(n["id"])
+    _compact_jobs[n["id"]] = {"state": "running"}
+    threading.Thread(target=_run_compact, args=(n["id"], n), daemon=True).start()
+    return {"started": True, "session": n["id"]}
 
 
 @app.get("/api/sessions/{sid}/compact")

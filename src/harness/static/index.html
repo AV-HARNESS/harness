@@ -218,6 +218,8 @@
   .sec button .i { width:16px; height:16px; }
   #compact.nudge { border-color:var(--accent); color:var(--accent); position:relative; } #compact.nudge::after { content:''; position:absolute; top:-3px; right:-3px; width:8px; height:8px; border-radius:50%; background:var(--accent); animation:nudge 1.6s ease-in-out infinite; }
   @keyframes nudge { 50% { transform:scale(1.5); opacity:.5; } }
+  #jump { position:absolute; top:-42px; left:50%; transform:translateX(-50%); z-index:5; border-radius:20px; padding:5px 14px; background:var(--panel); border:1px solid var(--line); cursor:pointer; box-shadow:0 2px 8px #0002; }
+  #longbar { display:flex; align-items:center; gap:8px; padding:7px 22px; font-size:13px; background:var(--panel); border-top:1px solid var(--line); } #longbar[hidden] { display:none; } #longbar span { flex:1; color:var(--mute); } #longbar button { cursor:pointer; } #lb-x { border:none; background:none; font-size:16px; }
   #tok.warn { color:var(--accent); font-weight:600; }
 </style>
 </head>
@@ -264,7 +266,9 @@
     <span id="tok"></span>
   </header>
   <div id="log"><div class="col" id="msgs"></div></div>
+  <div id="longbar" hidden><span id="longtxt"></span><button id="lb-compact">Compact</button><button id="lb-new">Continue in new session</button><button id="lb-x" title="Hide for this session">&times;</button></div>
   <footer><div class="col" style="position:relative">
+    <button id="jump" hidden title="Jump to the latest output">&darr; Latest</button>
     <div id="folder"><svg class="i "><use href="#i-folder"/></svg><span id="froot"></span><button id="fchange">Change</button></div>
     <div class="composer" id="composer">
       <div class="chips" id="chips" hidden></div>
@@ -347,10 +351,16 @@ function md(t) {
     .replace(/`([^`\n]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
 }
+let atBottom = true;  // is the reader at the bottom? only then does new output pull the view down
+function toBottom(force) {
+  const l = $('log');
+  if (force || atBottom) { l.scrollTop = 1e9; atBottom = true; $('jump').hidden = true; }
+  else $('jump').hidden = false;  // they scrolled up to read: leave them there, offer a way back
+}
 function add(cls, html) {
   if (typeof endSteps === 'function') endSteps();
   const d = document.createElement('div'); d.className = 'msg ' + cls; d.innerHTML = html;
-  $('msgs').appendChild(d); $('log').scrollTop = 1e9; return d;
+  $('msgs').appendChild(d); toBottom(cls === 'user'); return d;
 }
 let lastTool = null, spoken = '', files = [], voiceMode = false, live = null, liveRaw = '';
 const SVG = n => `<svg class="i"><use href="#i-${n}"/></svg>`;
@@ -379,7 +389,7 @@ function toolCall(name, args) {
   const d = document.createElement('details'); d.className = 'step';
   d.innerHTML = `<summary>${esc(name)}  ${esc(a)}</summary><pre>${esc(JSON.stringify(args, null, 2))}</pre>`;
   grp.querySelector('.body').appendChild(d); lastTool = d; pend.push(d);
-  const body = grp.querySelector('.body'); body.scrollTop = 1e9; $('log').scrollTop = 1e9;
+  const body = grp.querySelector('.body'); body.scrollTop = 1e9; toBottom();
 }
 function toolResult(out) {
   const d = pend.shift() || lastTool; if (!d) return;   // results arrive in the same order as the calls
@@ -402,7 +412,34 @@ function render(m, i) {
     if (p.functionResponse) toolResult(p.functionResponse.response.output);
   }
 }
+$('log').addEventListener('scroll', () => { const l = $('log'); atBottom = l.scrollHeight - l.scrollTop - l.clientHeight < 80; if (atBottom) $('jump').hidden = true; });
+$('jump').onclick = () => toBottom(true);
+const hideLong = new Set();
+function longBar(n) {  // a very long session is slow however it is cached: suggest compacting or starting fresh
+  const at = cfg && cfg.long_at, bar = $('longbar');
+  const show = !!(at && n > at && cur && !hideLong.has(cur.id));
+  bar.hidden = !show;
+  if (show) $('longtxt').textContent = `This session is long (${Math.round(n / 1000)}k tokens). Every step re-sends it, so replies get slow.`;
+}
+$('lb-x').onclick = () => { if (cur) hideLong.add(cur.id); $('longbar').hidden = true; };
+$('lb-compact').onclick = () => $('compact').click();
+$('lb-new').onclick = async () => {  // copy the session, summarize the copy in the background, then switch to it
+  if (!cur) return; const b = $('lb-new'), sid = cur.id, label = b.textContent; b.disabled = true; b.textContent = 'Preparing\u2026';
+  try {
+    const {session} = await api('POST', `/api/sessions/${sid}/handoff`);
+    let r, miss = 0;
+    for (;;) {
+      await new Promise(ok => setTimeout(ok, 2000));
+      try { r = await api('GET', `/api/sessions/${session}/compact`); miss = 0; } catch (e) { if (++miss >= 5) throw new Error('lost contact with the harness server'); continue; }
+      if (r.state !== 'running') break;
+    }
+    if (r.state === 'error') throw new Error(r.error);
+    await loadList(); if (cur && cur.id === sid) await open(session);
+  } catch (e) { add('sys', 'Could not start a new session: ' + (e.message || e)); }
+  finally { b.disabled = false; b.textContent = label; }
+};
 function setTok(n) {
+  longBar(n);
   const t = $('tok'); t.textContent = n ? `${(n/1000).toFixed(1)}k ctx` : '';
   const at = cfg && cfg.compact_at; t.title = at ? `Prompt size sent with every step. Compacts above ${Math.round(at/1000)}k (HARNESS_COMPACT_AT).` : 'Prompt size sent with every step';
   const hint = cfg && cfg.compact_hint_at, c = $('compact');  // a gentle nudge to compact before the prompt gets slow
@@ -476,7 +513,7 @@ async function open(id) {
   const t = ++openTok;
   const s = await api('GET', '/api/sessions/' + id);
   if (t !== openTok) return;  // a newer click won: never paint an older answer over it
-  clearTimeout(pollTimer); cur = s;
+  clearTimeout(pollTimer); cur = s; atBottom = true;
   paint();
   $('title').value = cur.title; $('model').value = cur.model; syncModelBtn(); setEffort(cur.effort || ''); $('instr').value = cur.instructions || '';
   setTok(cur.prompt_tokens); setSend(isRunning()); drawQueued(); setHash(); loadList(); tabTitle();
@@ -549,7 +586,7 @@ async function send(textOverride, editIndex) {
       if (e.type === 'user') { const q = queuedBy[sid] || [], k = q.indexOf(e.text); if (k >= 0) q.splice(k, 1); }
       if (!here()) continue;  // another session is on screen now: the server keeps this one's history; it reloads when you return
       if (e.type === 'text_delta') {  // the reply as it is written: grow one live bubble, then 'text' finalises it
-        if (!live) { live = add('', ''); liveRaw = ''; } liveRaw += e.text; live.innerHTML = md(liveRaw); $('log').scrollTop = 1e9;
+        if (!live) { live = add('', ''); liveRaw = ''; } liveRaw += e.text; live.innerHTML = md(liveRaw); toBottom();
       }
       else if (e.type === 'text') { if (live) { live.innerHTML = md(e.text); live = null; } else add('', md(e.text)); spoken += ' ' + e.text; }
       else if (e.type === 'tool_call') toolCall(e.name, e.args);
