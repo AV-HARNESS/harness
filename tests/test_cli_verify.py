@@ -89,3 +89,23 @@ def test_cli_opens_project_for_current_folder(tmp_path, monkeypatch):
     new = cli.project_for_cwd()
     assert new["name"] == "Other" and new["root"] == str((tmp_path / "other").resolve()) and len(store.list_projects()) == n + 1
     assert cli.project_for_cwd()["id"] == new["id"]  # and it is reused next time
+
+
+@covers("R-CLI-04")
+def test_bench_prints_timings_per_model(fake, model, capsys):
+    from harness import bench
+    for _ in range(8):
+        fake.push((200, gem(text("ok"))))
+    lines = []
+    assert bench.run([model], rounds=2, say=lines.append) == 0
+    out = "\n".join(lines)
+    assert "tiny prompt:" in out and "median" in out and "20k-token prompt" in out and "30-step run" in out
+    assert len(fake.requests) == 4  # 2 tiny + 2 big
+
+
+@covers("R-CLI-04")
+def test_bench_reports_a_failing_model(fake, model):
+    from harness import bench
+    lines = []
+    fake.push((400, {"error": "bad"}))
+    assert bench.run([model], rounds=1, say=lines.append) == 1 and "failed" in "\n".join(lines)

@@ -158,6 +158,9 @@ def main() -> None:
     vf.add_argument("aliases", nargs="*", help="model aliases (default: all configured)")
     vc = sub.add_parser("verify-cache", help="try every context-cache mode against your gateway and print what each answers")
     vc.add_argument("aliases", nargs="*", help="model aliases (default: all Gemini models)")
+    bn = sub.add_parser("bench", help="time tiny and 20k-token calls to each model: separates gateway speed from harness behaviour")
+    bn.add_argument("aliases", nargs="*", help="model aliases (default: all configured)")
+    bn.add_argument("--rounds", type=int, default=5)
     c = sub.add_parser("chat", help="terminal chat (default)")
     c.add_argument("--resume", help="session id")
     c.add_argument("--project", help="project id or name")
@@ -172,6 +175,9 @@ def main() -> None:
     elif a.cmd == "verify":
         from .verify import main as verify_main
         raise SystemExit(verify_main(a.aliases))
+    elif a.cmd == "bench":
+        from .bench import run as bench_run
+        raise SystemExit(bench_run(a.aliases or list(config.MODELS), a.rounds))
     elif a.cmd == "verify-cache":
         from .providers import gcache, gemini
         for alias in a.aliases or [k for k, s in config.MODELS.items() if s.get("provider", "gemini") == "gemini"]:
